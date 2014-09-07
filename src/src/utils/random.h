@@ -53,7 +53,7 @@ inline double NextDouble(void) {
 }
 /*! \brief return a random number in n */
 inline uint32_t NextUInt32(uint32_t n) {
-  return (uint32_t)floor(NextDouble() * n);
+  return (uint32_t)std::floor(NextDouble() * n);
 }
 /*! \brief return  x~N(mu,sigma^2) */
 inline double SampleNormal(double mu, double sigma) {
@@ -91,7 +91,7 @@ struct Random{
 	// use rand instead of rand_r in windows, for MSVC it is fine since rand is threadsafe
 	// For cygwin and mingw, this can slows down parallelism, but rand_r is only used in objective-inl.hpp, won't affect speed in general
 	// todo, replace with another PRNG
-#if defined(_MSC_VER)||defined(_WIN32)
+#if defined(_MSC_VER)||defined(_WIN32)||defined(XGBOOST_STRICT_CXX98_)
     return Uniform();
 #else
     return static_cast<double>(rand_r(&rseed)) / (static_cast<double>(RAND_MAX) + 1.0);

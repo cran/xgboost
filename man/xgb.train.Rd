@@ -3,8 +3,8 @@
 \alias{xgb.train}
 \title{eXtreme Gradient Boosting Training}
 \usage{
-xgb.train(params = list(), dtrain, nrounds, watchlist = list(),
-  obj = NULL, feval = NULL, ...)
+xgb.train(params = list(), data, nrounds, watchlist = list(), obj = NULL,
+  feval = NULL, verbose = 1, ...)
 }
 \arguments{
 \item{params}{the list of parameters. Commonly used ones are:
@@ -15,14 +15,14 @@ xgb.train(params = list(), dtrain, nrounds, watchlist = list(),
     \item \code{binary:logistic} logistic regression for classification
   }
   \item \code{eta} step size of each boosting step
-  \item \code{max_depth} maximum depth of the tree
+  \item \code{max.depth} maximum depth of the tree
   \item \code{nthread} number of thread used in training, if not set, all threads are used
 }
 
   See \url{https://github.com/tqchen/xgboost/wiki/Parameters} for
-  further details. See also demo/demo.R for walkthrough example in R.}
+  further details. See also demo/ for walkthrough example in R.}
 
-\item{dtrain}{takes an \code{xgb.DMatrix} as the input.}
+\item{data}{takes an \code{xgb.DMatrix} as the input.}
 
 \item{nrounds}{the max number of iterations}
 
@@ -32,11 +32,15 @@ xgb.train(params = list(), dtrain, nrounds, watchlist = list(),
    watchlist=list(validation1=mat1, validation2=mat2) to watch
    the performance of each round's model on mat1 and mat2}
 
-\item{obj}{customized objective function. Given prediction and dtrain,
-return gradient and second order gradient.}
+\item{obj}{customized objective function. Returns gradient and second order
+gradient with given prediction and dtrain,}
 
-\item{feval}{custimized evaluation function. Given prediction and dtrain,
-return a \code{list(metric='metric-name', value='metric-value')}.}
+\item{feval}{custimized evaluation function. Returns
+\code{list(metric='metric-name', value='metric-value')} with given
+prediction and dtrain,}
+
+\item{verbose}{If 0, xgboost will stay silent. If 1, xgboost will print
+  information of performance. If 2, xgboost will print information of both}
 
 \item{...}{other parameters to pass to \code{params}.}
 }
@@ -54,12 +58,11 @@ It supports advanced features such as watchlist, customized objective function,
 therefore it is more flexible than \code{\link{xgboost}}.
 }
 \examples{
-data(iris)
-iris[,5] <- as.numeric(iris[,5])
-dtrain <- xgb.DMatrix(as.matrix(iris[,1:4]), label=iris[,5])
+data(agaricus.train, package='xgboost')
+dtrain <- xgb.DMatrix(agaricus.train$data, label = agaricus.train$label)
 dtest <- dtrain
 watchlist <- list(eval = dtest, train = dtrain)
-param <- list(max_depth = 2, eta = 1, silent = 1)
+param <- list(max.depth = 2, eta = 1, silent = 1)
 logregobj <- function(preds, dtrain) {
    labels <- getinfo(dtrain, "label")
    preds <- 1/(1 + exp(-preds))

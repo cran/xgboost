@@ -6,10 +6,15 @@
 #include <string>
 #include <cstring>
 #include <algorithm>
+// include all std functions
+using namespace std;
+
 #include "./xgboost_wrapper.h"
 #include "../src/data.h"
 #include "../src/learner/learner-inl.hpp"
 #include "../src/io/io.h"
+#include "../src/utils/utils.h"
+#include "../src/utils/matrix_csr.h"
 #include "../src/io/simple_dmatrix-inl.hpp"
 
 using namespace xgboost;
@@ -25,11 +30,11 @@ class Booster: public learner::BoostLearner {
     this->init_model = false;
     this->SetCacheData(mats);
   }
-  const float *Pred(const DataMatrix &dmat, int output_margin, bst_ulong *len) {
+  inline const float *Pred(const DataMatrix &dmat, int output_margin, unsigned ntree_limit, bst_ulong *len) {
     this->CheckInitModel();
-    this->Predict(dmat, output_margin != 0, &this->preds_);
+    this->Predict(dmat, output_margin != 0, &this->preds_, ntree_limit);
     *len = static_cast<bst_ulong>(this->preds_.size());
-    return &this->preds_[0];
+    return BeginPtr(this->preds_);
   }
   inline void BoostOneIter(const DataMatrix &train,
                            float *grad, float *hess, bst_ulong len) {
@@ -57,7 +62,7 @@ class Booster: public learner::BoostLearner {
       model_dump_cptr[i] = model_dump[i].c_str();
     }
     *len = static_cast<bst_ulong>(model_dump.size());
-    return &model_dump_cptr[0];
+    return BeginPtr(model_dump_cptr);
   }
   // temporal fields
   // temporal data to save evaluation dump
@@ -96,6 +101,31 @@ extern "C"{
                                        static_cast<size_t>(indices[i]+1));
     }
     mat.info.info.num_row = nindptr - 1;
+    return p_mat;
+  }
+  XGB_DLL void* XGDMatrixCreateFromCSC(const bst_ulong *col_ptr,
+                                       const unsigned *indices,
+                                       const float *data,
+                                       bst_ulong nindptr,
+                                       bst_ulong nelem) {
+    DMatrixSimple *p_mat = new DMatrixSimple();
+    DMatrixSimple &mat = *p_mat;
+    utils::SparseCSRMBuilder<RowBatch::Entry, false> builder(mat.row_ptr_, mat.row_data_);
+    builder.InitBudget();
+    bst_ulong ncol = nindptr - 1;
+    for (bst_ulong i = 0; i < ncol; ++i) {
+      for (unsigned j = col_ptr[i]; j < col_ptr[i+1]; ++j) {
+        builder.AddBudget(indices[j]);
+      }
+    }
+    builder.InitStorage();
+    for (bst_ulong i = 0; i < ncol; ++i) {
+      for (unsigned j = col_ptr[i]; j < col_ptr[i+1]; ++j) {
+        builder.PushElem(indices[j], RowBatch::Entry(static_cast<bst_uint>(i), data[j]));
+      }
+    }
+    mat.info.info.num_row = mat.row_ptr_.size() - 1;
+    mat.info.info.num_col = static_cast<size_t>(ncol);
     return p_mat;
   }
   void* XGDMatrixCreateFromMat(const float *data,
@@ -174,13 +204,13 @@ extern "C"{
     std::vector<float> &vec = 
         static_cast<DataMatrix*>(handle)->info.GetFloatInfo(field);
     vec.resize(len);
-    memcpy(&vec[0], info, sizeof(float) * len);
+    memcpy(BeginPtr(vec), info, sizeof(float) * len);
   }
   void XGDMatrixSetUIntInfo(void *handle, const char *field, const unsigned *info, bst_ulong len) {
     std::vector<unsigned> &vec =
         static_cast<DataMatrix*>(handle)->info.GetUIntInfo(field);
     vec.resize(len);
-    memcpy(&vec[0], info, sizeof(unsigned) * len);
+    memcpy(BeginPtr(vec), info, sizeof(unsigned) * len);
   }
   void XGDMatrixSetGroup(void *handle, const unsigned *group, bst_ulong len) {
     DataMatrix *pmat = static_cast<DataMatrix*>(handle);
@@ -194,13 +224,13 @@ extern "C"{
     const std::vector<float> &vec =
         static_cast<const DataMatrix*>(handle)->info.GetFloatInfo(field);
     *len = static_cast<bst_ulong>(vec.size());
-    return &vec[0];
+    return BeginPtr(vec);
   }
   const unsigned* XGDMatrixGetUIntInfo(const void *handle, const char *field, bst_ulong* len) {
     const std::vector<unsigned> &vec =
         static_cast<const DataMatrix*>(handle)->info.GetUIntInfo(field);
     *len = static_cast<bst_ulong>(vec.size());
-    return &vec[0];
+    return BeginPtr(vec);
   }
   bst_ulong XGDMatrixNumRow(const void *handle) {
     return static_cast<bst_ulong>(static_cast<const DataMatrix*>(handle)->info.num_row());
@@ -249,8 +279,8 @@ extern "C"{
     bst->eval_str = bst->EvalOneIter(iter, mats, names);
     return bst->eval_str.c_str();
   }
-  const float *XGBoosterPredict(void *handle, void *dmat, int output_margin, bst_ulong *len) {
-    return static_cast<Booster*>(handle)->Pred(*static_cast<DataMatrix*>(dmat), output_margin, len);
+  const float *XGBoosterPredict(void *handle, void *dmat, int output_margin, unsigned ntree_limit, bst_ulong *len) {
+    return static_cast<Booster*>(handle)->Pred(*static_cast<DataMatrix*>(dmat), output_margin, ntree_limit, len);
   }
   void XGBoosterLoadModel(void *handle, const char *fname) {
     static_cast<Booster*>(handle)->LoadModel(fname);

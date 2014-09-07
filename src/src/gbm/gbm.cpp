@@ -8,6 +8,7 @@
 namespace xgboost {
 namespace gbm {
 IGradBooster* CreateGradBooster(const char *name) {
+  using namespace std;
   if (!strcmp("gbtree", name)) return new GBTree();
   if (!strcmp("gblinear", name)) return new GBLinear();
   utils::Error("unknown booster type: %s", name);

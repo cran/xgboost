@@ -65,6 +65,11 @@ extern "C" {
    * \return info vector
    */  
   SEXP XGDMatrixGetInfo_R(SEXP handle, SEXP field);
+  /*!
+   * \brief return number of rows
+   * \param handle a instance of data matrix
+   */
+  SEXP XGDMatrixNumRow_R(SEXP handle);
   /*! 
    * \brief create xgboost learner 
    * \param dmats a list of dmatrix handles that will be cached
@@ -107,8 +112,9 @@ extern "C" {
    * \param handle handle
    * \param dmat data matrix
    * \param output_margin whether only output raw margin value
+   * \param ntree_limit limit number of trees used in prediction
    */
-  SEXP XGBoosterPredict_R(SEXP handle, SEXP dmat, SEXP output_margin);
+  SEXP XGBoosterPredict_R(SEXP handle, SEXP dmat, SEXP output_margin, SEXP ntree_limit);
   /*!
    * \brief load model from existing file
    * \param handle handle
