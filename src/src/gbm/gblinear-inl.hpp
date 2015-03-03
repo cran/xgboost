@@ -8,6 +8,7 @@
  */
 #include <vector>
 #include <string>
+#include <sstream>
 #include <algorithm>
 #include "./gbm.h"
 #include "../tree/updater.h"
@@ -32,16 +33,17 @@ class GBLinear : public IGradBooster {
       model.param.SetParam(name, val);
     }
   }
-  virtual void LoadModel(utils::IStream &fi) {
+  virtual void LoadModel(utils::IStream &fi, bool with_pbuffer) {
     model.LoadModel(fi);
   }
-  virtual void SaveModel(utils::IStream &fo) const {
+  virtual void SaveModel(utils::IStream &fo, bool with_pbuffer) const {
     model.SaveModel(fo);
   }
   virtual void InitModel(void) {
     model.InitModel();
   }
   virtual void DoBoost(IFMatrix *p_fmat,
+                       int64_t buffer_offset,
                        const BoosterInfo &info,
                        std::vector<bst_gpair> *in_gpair) {
     std::vector<bst_gpair> &gpair = *in_gpair;
@@ -134,9 +136,36 @@ class GBLinear : public IGradBooster {
       }
     }
   }
+  virtual void Predict(const SparseBatch::Inst &inst,
+                       std::vector<float> *out_preds,
+                       unsigned ntree_limit,
+                       unsigned root_index) {
+    const int ngroup = model.param.num_output_group;
+    for (int gid = 0; gid < ngroup; ++gid) {
+      this->Pred(inst, BeginPtr(*out_preds));
+    }
+  }
+  virtual void PredictLeaf(IFMatrix *p_fmat,
+                           const BoosterInfo &info,
+                           std::vector<float> *out_preds,
+                           unsigned ntree_limit = 0) {
+    utils::Error("gblinear does not support predict leaf index");
+  }
   virtual std::vector<std::string> DumpModel(const utils::FeatMap& fmap, int option) {
-    utils::Error("gblinear does not support dump model");
-    return std::vector<std::string>();
+    std::stringstream fo("");
+    fo << "bias:\n";
+    for (int i = 0; i < model.param.num_output_group; ++i) {
+      fo << model.bias()[i] << std::endl;
+    }
+    fo << "weight:\n";
+    for (int i = 0; i < model.param.num_output_group; ++i) {
+      for (unsigned j = 0; j <model.param.num_feature; ++j) {
+        fo << model[i][j] << std::endl;
+      }
+    }
+    std::vector<std::string> v;
+    v.push_back(fo.str());
+    return v;
   }
 
  protected:
@@ -144,6 +173,7 @@ class GBLinear : public IGradBooster {
     for (int gid = 0; gid < model.param.num_output_group; ++gid) {
       float psum = model.bias()[gid];
       for (bst_uint i = 0; i < inst.length; ++i) {
+        if (inst[i].index >= model.param.num_feature) continue;
         psum += inst[i].fvalue * model[inst[i].index][gid];
       }
       preds[gid] = psum;
@@ -200,7 +230,7 @@ class GBLinear : public IGradBooster {
     // model parameter
     struct Param {
       // number of feature dimension
-      int num_feature;
+      unsigned num_feature;
       // number of output group
       int num_output_group;
       // reserved field
@@ -213,7 +243,7 @@ class GBLinear : public IGradBooster {
       }
       inline void SetParam(const char *name, const char *val) {
         using namespace std;
-        if (!strcmp(name, "bst:num_feature")) num_feature = atoi(val);
+        if (!strcmp(name, "bst:num_feature")) num_feature = static_cast<unsigned>(atoi(val));
         if (!strcmp(name, "num_output_group")) num_output_group = atoi(val);
       }
     };

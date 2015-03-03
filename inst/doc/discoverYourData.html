@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Tianqi Chen, Tong He, Michaël Benesty" />
+
+
+<title>Understand your dataset with Xgboost</title>
+
+
+
+<style type="text/css">code{white-space: pre;}</style>
+<style type="text/css">
+table.sourceCode, tr.sourceCode, td.lineNumbers, td.sourceCode {
+  margin: 0; padding: 0; vertical-align: baseline; border: none; }
+table.sourceCode { width: 100%; line-height: 100%; }
+td.lineNumbers { text-align: right; padding-right: 4px; padding-left: 4px; color: #aaaaaa; border-right: 1px solid #aaaaaa; }
+td.sourceCode { padding-left: 5px; }
+code > span.kw { color: #007020; font-weight: bold; }
+code > span.dt { color: #902000; }
+code > span.dv { color: #40a070; }
+code > span.bn { color: #40a070; }
+code > span.fl { color: #40a070; }
+code > span.ch { color: #4070a0; }
+code > span.st { color: #4070a0; }
+code > span.co { color: #60a0b0; font-style: italic; }
+code > span.ot { color: #007020; }
+code > span.al { color: #ff0000; font-weight: bold; }
+code > span.fu { color: #06287e; }
+code > span.er { color: #ff0000; font-weight: bold; }
+</style>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+
+
+<link href="data:text/css,body%20%7B%0A%20%20%20%20margin%3A%200%20auto%3B%0A%20%20%20%20background%2Dcolor%3A%20white%3B%0A%0A%2F%2A%20%20%2D%2D%2D%2D%2D%2D%2D%2D%2D%20FONT%20FAMILY%20%2D%2D%2D%2D%2D%2D%2D%2D%0A%20%20%20following%20are%20some%20optional%20font%20families%2E%20Usually%20a%20family%20%0A%09is%20safer%20to%20choose%20than%20a%20specific%20font%2C%20%0A%09which%20may%20not%20be%20on%20the%20users%20computer%09%09%2A%2F%0A%2F%20%20%20%20font%2Dfamily%3AGeorgia%2C%20Palatino%2C%20serif%3B%0A%20%20%20%20font%2Dfamily%3A%20%22Open%20Sans%22%2C%20%22Book%20Antiqua%22%2C%20Palatino%2C%20serif%3B%0A%2F%20%20%20%20font%2Dfamily%3AArial%2C%20Helvetica%2C%20sans%2Dserif%3B%0A%2F%20%20%20%20font%2Dfamily%3ATahoma%2C%20Verdana%2C%20Geneva%2C%20sans%2Dserif%3B%0A%2F%20%20%20%20font%2Dfamily%3ACourier%2C%20monospace%3B%0A%2F%20%20%20%20font%2Dfamily%3A%22Times%20New%20Roman%22%2C%20Times%2C%20serif%3B%0A%0A%2F%2A%09%2D%2D%2D%2D%2D%2D%2D%2D%2D%2D%2D%2D%2D%2D%20COLOR%20OPTIONS%20%2D%2D%2D%2D%2D%2D%2D%2D%2D%2D%2D%2D%0A%20%09following%20are%20additional%20color%20options%20for%20base%20font%0A%09you%20could%20uncomment%20another%20one%20to%20easily%20change%20the%20base%20color%20%0A%09or%20add%20one%20to%20a%20specific%20element%20style%20below%20%20%20%20%20%20%20%20%20%2A%2F%09%09%0A%20%20%20%20color%3A%20%23333333%3B%20%2F%2A%20dark%20gray%20not%20black%20%2A%2F%0A%2F%20%20%20%20color%3A%20%23000000%3B%20%2F%2A%20black%20%2A%2F%0A%2F%20%20%20%20color%3A%20%23666666%3B%20%2F%2A%20medium%20gray%20%20black%20%2A%2F%09%0A%2F%20%20%20%20color%3A%20%23E3E3E3%3B%20%2F%2A%20very%20light%20gray%20%2A%2F%0A%2F%20%20%20%20color%3A%20white%3B%20%0A%0A%20%20%20%20line%2Dheight%3A%20100%25%3B%0A%20%20%20%20max%2Dwidth%3A%20800px%3B%0A%20%20%20%20padding%3A%2010px%3B%0A%20%20%20%20font%2Dsize%3A%2017px%3B%0A%20%20%20%20text%2Dalign%3A%20justify%3B%0A%20%20%20%20text%2Djustify%3A%20inter%2Dword%3B%0A%7D%0A%0A%0Ap%20%7B%0A%20%20%20%20line%2Dheight%3A%20150%25%3B%0A%2F%20%20%20%20max%2Dwidth%3A%20540px%3B%0A%20%20%20%20max%2Dwidth%3A%20960px%3B%0A%20%20%20%20margin%2Dbottom%3A%205px%3B%0A%20%20%20%20font%2Dweight%3A%20400%3B%20%20%20%20%0A%2F%20%20%20%20color%3A%20%23333333%0A%7D%0A%0A%0Ah1%2C%20h2%2C%20h3%2C%20h4%2C%20h5%2C%20h6%20%7B%0A%20%20%20%20font%2Dweight%3A%20400%3B%0A%20%20%20%20margin%2Dtop%3A%2035px%3B%0A%20%20%20%20margin%2Dbottom%3A%2015px%3B%0A%20%20%20%20padding%2Dtop%3A%2010px%3B%0A%7D%0A%0Ah1%20%7B%0A%20%20%20%20margin%2Dtop%3A%2070px%3B%0A%20%20%20%20color%3A%20%23606AAA%3B%0A%20%20%20%20font%2Dsize%3A230%25%3B%0A%20%20%20%20font%2Dvariant%3Asmall%2Dcaps%3B%0A%20%20%20%20padding%2Dbottom%3A20px%3B%0A%20%20%20%20width%3A100%25%3B%0A%20%20%20%20border%2Dbottom%3A1px%20solid%20%23606AAA%3B%0A%7D%0A%0Ah2%20%7B%0A%20%20%20%20font%2Dsize%3A160%25%3B%0A%7D%0A%0Ah3%20%7B%0A%20%20%20%20font%2Dsize%3A130%25%3B%0A%7D%0A%0Ah4%20%7B%0A%20%20%20%20font%2Dsize%3A120%25%3B%0A%20%20%20%20font%2Dvariant%3Asmall%2Dcaps%3B%0A%7D%0A%0Ah5%20%7B%0A%20%20%20%20font%2Dsize%3A120%25%3B%0A%7D%0A%0Ah6%20%7B%0A%20%20%20%20font%2Dsize%3A120%25%3B%0A%20%20%20%20font%2Dvariant%3Asmall%2Dcaps%3B%0A%7D%0A%0Aa%20%7B%0A%20%20%20%20color%3A%20%23606AAA%3B%0A%20%20%20%20margin%3A%200%3B%0A%20%20%20%20padding%3A%200%3B%0A%20%20%20%20vertical%2Dalign%3A%20baseline%3B%0A%7D%0A%0Aa%3Ahover%20%7B%0A%20%20%20%20text%2Ddecoration%3A%20blink%3B%0A%20%20%20%20color%3A%20green%3B%0A%7D%0A%0Aa%3Avisited%20%7B%0A%20%20%20%20color%3A%20gray%3B%0A%7D%0A%0Aul%2C%20ol%20%7B%0A%20%20%20%20padding%3A%200%3B%0A%20%20%20%20margin%3A%200px%200px%200px%2050px%3B%0A%7D%0Aul%20%7B%0A%20%20%20%20list%2Dstyle%2Dtype%3A%20square%3B%0A%20%20%20%20list%2Dstyle%2Dposition%3A%20inside%3B%0A%0A%7D%0A%0Ali%20%7B%0A%20%20%20%20%20line%2Dheight%3A150%25%20%20%20%20%0A%7D%0A%0Ali%20ul%2C%20li%20ul%20%7B%0A%20%20%20%20margin%2Dleft%3A%2024px%3B%0A%7D%0A%0Apre%20%7B%0A%20%20%20%20padding%3A%200px%2010px%3B%0A%20%20%20%20max%2Dwidth%3A%20800px%3B%0A%20%20%20%20white%2Dspace%3A%20pre%2Dwrap%3B%0A%7D%0A%0Acode%20%7B%0A%20%20%20%20font%2Dfamily%3A%20Consolas%2C%20Monaco%2C%20Andale%20Mono%2C%20monospace%2C%20courrier%20new%3B%0A%20%20%20%20line%2Dheight%3A%201%2E5%3B%0A%20%20%20%20font%2Dsize%3A%2015px%3B%0A%20%20%20%20background%3A%20%23F8F8F8%3B%0A%20%20%20%20border%2Dradius%3A%204px%3B%0A%20%20%20%20padding%3A%205px%3B%0A%20%20%20%20display%3A%20inline%2Dblock%3B%0A%20%20%20%20max%2Dwidth%3A%20800px%3B%0A%20%20%20%20white%2Dspace%3A%20pre%2Dwrap%3B%0A%7D%0A%0A%0Ali%20code%2C%20p%20code%20%7B%0A%20%20background%3A%20%23CDCDCD%3B%0A%20%20color%3A%20%23606AAA%3B%0A%20%20padding%3A%200px%205px%200px%205px%3B%0A%7D%0A%0Acode%2Er%2C%20code%2Ecpp%20%7B%0A%20%20%20%20display%3A%20block%3B%0A%20%20%20%20word%2Dwrap%3A%20break%2Dword%3B%0A%20%20%20%20border%3A%201px%20solid%20%23606AAA%3B%20%20%20%20%20%20%20%20%0A%7D%0A%0Aaside%20%7B%0A%20%20%20%20display%3A%20block%3B%0A%20%20%20%20float%3A%20right%3B%0A%20%20%20%20width%3A%20390px%3B%0A%7D%0A%0Ablockquote%20%7B%0A%20%20%20%20border%2Dleft%3A%2E5em%20solid%20%23606AAA%3B%0A%20%20%20%20background%3A%20%23F8F8F8%3B%0A%20%20%20%20padding%3A%200em%201em%200em%201em%3B%0A%20%20%20%20margin%2Dleft%3A10px%3B%0A%20%20%20%20max%2Dwidth%3A%20500px%3B%0A%7D%0A%0Ablockquote%20cite%20%7B%0A%20%20%20%20line%2Dheight%3A10px%3B%0A%20%20%20%20color%3A%23bfbfbf%3B%0A%7D%0A%0Ablockquote%20cite%3Abefore%20%7B%0A%20%20%20%20%2Fcontent%3A%20%27%5C2014%20%5C00A0%27%3B%0A%7D%0A%0Ablockquote%20p%20%7B%20%20%0A%20%20%20%20color%3A%20%23666%3B%0A%7D%0Ahr%20%7B%0A%2F%20%20%20width%3A%20540px%3B%0A%20%20%20%20text%2Dalign%3A%20left%3B%0A%20%20%20%20margin%3A%200%20auto%200%200%3B%0A%20%20%20%20color%3A%20%23999%3B%0A%7D%0A%0A%0A%2F%2A%20table%20%2A%2F%0A%0Atable%20%7B%0A%20%20width%3A%20100%25%3B%0A%20%20border%2Dtop%3A%201px%20solid%20%23919699%3B%0A%09border%2Dleft%3A%201px%20solid%20%23919699%3B%0A%09border%2Dspacing%3A%200%3B%0A%7D%0A%09%0Atable%20th%20%7B%0A%09padding%3A%204px%208px%204px%208px%3B%0A%20%20text%2Dalign%3A%20center%3B%0A%20%20color%3A%20white%3B%0A%09background%3A%20%23606AAA%3B%0A%09border%2Dbottom%3A%201px%20solid%20%23919699%3B%0A%09border%2Dright%3A%201px%20solid%20%23919699%3B%0A%7D%0Atable%20th%20p%20%7B%0A%09font%2Dweight%3A%20bold%3B%0A%09margin%2Dbottom%3A%200px%3B%20%0A%7D%0A%09%0Atable%20td%20%7B%0A%09padding%3A%208px%3B%09%0A%09vertical%2Dalign%3A%20top%3B%0A%09border%2Dbottom%3A%201px%20solid%20%23919699%3B%0A%09border%2Dright%3A%201px%20solid%20%23919699%3B%0A%7D%0A%0Atable%20td%3Alast%2Dchild%20%7B%0A%20%20%2Fbackground%3A%20lightgray%3B%0A%20%20text%2Dalign%3A%20right%3B%0A%7D%0A%0Atable%20td%20p%20%7B%0A%09margin%2Dbottom%3A%200px%3B%20%0A%7D%0Atable%20td%20p%20%2B%20p%20%20%7B%0A%09margin%2Dtop%3A%205px%3B%20%0A%7D%0Atable%20td%20p%20%2B%20p%20%2B%20p%20%7B%0A%09margin%2Dtop%3A%205px%3B%20%0A%7D%0A" rel="stylesheet" type="text/css" />
+
+</head>
+
+<body>
+
+
+
+<div id="header">
+<h1 class="title">Understand your dataset with Xgboost</h1>
+<h4 class="author"><em>Tianqi Chen, Tong He, Michaël Benesty</em></h4>
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#introduction"><span class="toc-section-number">1</span> Introduction</a></li>
+<li><a href="#preparation-of-the-dataset"><span class="toc-section-number">2</span> Preparation of the dataset</a><ul>
+<li><a href="#numeric-vs-categorical-variables"><span class="toc-section-number">2.1</span> Numeric VS categorical variables</a></li>
+<li><a href="#conversion-from-categorical-to-numeric-variables"><span class="toc-section-number">2.2</span> Conversion from categorical to numeric variables</a><ul>
+<li><a href="#looking-at-the-raw-data"><span class="toc-section-number">2.2.1</span> Looking at the raw data</a></li>
+<li><a href="#creation-of-new-features-based-on-old-ones"><span class="toc-section-number">2.2.2</span> Creation of new features based on old ones</a></li>
+<li><a href="#one-hot-encoding"><span class="toc-section-number">2.2.3</span> One-hot encoding</a></li>
+</ul></li>
+</ul></li>
+<li><a href="#build-the-model"><span class="toc-section-number">3</span> Build the model</a></li>
+<li><a href="#feature-importance"><span class="toc-section-number">4</span> Feature importance</a><ul>
+<li><a href="#measure-feature-importance"><span class="toc-section-number">4.1</span> Measure feature importance</a><ul>
+<li><a href="#build-the-feature-importance-data.table"><span class="toc-section-number">4.1.1</span> Build the feature importance data.table</a></li>
+<li><a href="#improvement-in-the-interpretability-of-feature-importance-data.table"><span class="toc-section-number">4.1.2</span> Improvement in the interpretability of feature importance data.table</a></li>
+</ul></li>
+<li><a href="#plotting-the-feature-importance"><span class="toc-section-number">4.2</span> Plotting the feature importance</a></li>
+<li><a href="#do-these-results-make-sense"><span class="toc-section-number">4.3</span> Do these results make sense?</a></li>
+</ul></li>
+<li><a href="#conclusion"><span class="toc-section-number">5</span> Conclusion</a></li>
+<li><a href="#special-note-what-about-random-forest"><span class="toc-section-number">6</span> Special Note: What about Random forest?</a></li>
+</ul>
+</div>
+
+<div id="introduction" class="section level1">
+<h1><span class="header-section-number">1</span> Introduction</h1>
+<p>The purpose of this Vignette is to show you how to use <strong>Xgboost</strong> to discover and understand your own dataset better.</p>
+<p>This Vignette is not about predicting anything (see <a href="https://github.com/tqchen/xgboost/blob/master/R-package/vignettes/xgboostPresentation.Rmd">Xgboost presentation</a>). We will explain how to use <strong>Xgboost</strong> to highlight the <em>link</em> between the <em>features</em> of your data and the <em>outcome</em>.</p>
+<p>Pacakge loading:</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">require</span>(xgboost)
+<span class="kw">require</span>(Matrix)
+<span class="kw">require</span>(data.table)
+if (!<span class="kw">require</span>(<span class="st">'vcd'</span>)) <span class="kw">install.packages</span>(<span class="st">'vcd'</span>) </code></pre>
+<blockquote>
+<p><strong>VCD</strong> package is used for one of its embedded dataset only.</p>
+</blockquote>
+</div>
+<div id="preparation-of-the-dataset" class="section level1">
+<h1><span class="header-section-number">2</span> Preparation of the dataset</h1>
+<div id="numeric-vs-categorical-variables" class="section level2">
+<h2><span class="header-section-number">2.1</span> Numeric VS categorical variables</h2>
+<p><strong>Xgboost</strong> manages only <code>numeric</code> vectors.</p>
+<p>What to do when you have <em>categorical</em> data?</p>
+<p>A <em>categorical</em> variable has a fixed number of different values. For instance, if a variable called <em>Colour</em> can have only one of these three values, <em>red</em>, <em>blue</em> or <em>green</em>, then <em>Colour</em> is a <em>categorical</em> variable.</p>
+<blockquote>
+<p>In <strong>R</strong>, a <em>categorical</em> variable is called <code>factor</code>.</p>
+<p>Type <code>?factor</code> in the console for more information.</p>
+</blockquote>
+<p>To answer the question above we will convert <em>categorical</em> variables to <code>numeric</code> one.</p>
+</div>
+<div id="conversion-from-categorical-to-numeric-variables" class="section level2">
+<h2><span class="header-section-number">2.2</span> Conversion from categorical to numeric variables</h2>
+<div id="looking-at-the-raw-data" class="section level3">
+<h3><span class="header-section-number">2.2.1</span> Looking at the raw data</h3>
+<p>In this Vignette we will see how to transform a <em>dense</em> dataframe (<em>dense</em> = few zeroes in the matrix) with <em>categorical</em> variables to a very <em>sparse</em> matrix (<em>sparse</em> = lots of zero in the matrix) of <code>numeric</code> features.</p>
+<p>The method we are going to see is usually called <a href="http://en.wikipedia.org/wiki/One-hot">one-hot encoding</a>.</p>
+<p>The first step is to load <code>Arthritis</code> dataset in memory and wrap it with <code>data.table</code> package.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">data</span>(Arthritis)
+df &lt;-<span class="st"> </span><span class="kw">data.table</span>(Arthritis, <span class="dt">keep.rownames =</span> F)</code></pre>
+<blockquote>
+<p><code>data.table</code> is 100% compliant with <strong>R</strong> dataframe but its syntax is very consistent and its performance is really good.</p>
+</blockquote>
+<p>The first thing we want to do is to have a look to the first lines of the <code>data.table</code>:</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">head</span>(df)</code></pre>
+<pre><code>##    ID Treatment  Sex Age Improved
+## 1: 57   Treated Male  27     Some
+## 2: 46   Treated Male  29     None
+## 3: 77   Treated Male  30     None
+## 4: 17   Treated Male  32   Marked
+## 5: 36   Treated Male  46   Marked
+## 6: 23   Treated Male  58   Marked</code></pre>
+<p>Now we will check the format of each column.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">str</span>(df)</code></pre>
+<pre><code>## Classes 'data.table' and 'data.frame':   84 obs. of  5 variables:
+##  $ ID       : int  57 46 77 17 36 23 75 39 33 55 ...
+##  $ Treatment: Factor w/ 2 levels &quot;Placebo&quot;,&quot;Treated&quot;: 2 2 2 2 2 2 2 2 2 2 ...
+##  $ Sex      : Factor w/ 2 levels &quot;Female&quot;,&quot;Male&quot;: 2 2 2 2 2 2 2 2 2 2 ...
+##  $ Age      : int  27 29 30 32 46 58 59 59 63 63 ...
+##  $ Improved : Ord.factor w/ 3 levels &quot;None&quot;&lt;&quot;Some&quot;&lt;..: 2 1 1 3 3 3 1 3 1 1 ...
+##  - attr(*, &quot;.internal.selfref&quot;)=&lt;externalptr&gt;</code></pre>
+<blockquote>
+<p>2 columns have <code>factor</code> type, one has <code>ordinal</code> type.</p>
+<p><code>ordinal</code> variable can take a limited number of values and these values can be ordered.</p>
+<p><code>Marked &gt; Some &gt; None</code></p>
+</blockquote>
+</div>
+<div id="creation-of-new-features-based-on-old-ones" class="section level3">
+<h3><span class="header-section-number">2.2.2</span> Creation of new features based on old ones</h3>
+<p>We will add some new <em>categorical</em> features to see if it helps.</p>
+<p>These feature will be highly correlated to the <code>Age</code> feature. Usually it’s not a good thing in machine learning. Fortunately, decision tree algorithms (including boosted trees) are robust to correlated features.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">head</span>(df[,AgeDiscret:<span class="er">=</span><span class="st"> </span><span class="kw">as.factor</span>(<span class="kw">round</span>(Age/<span class="dv">10</span>,<span class="dv">0</span>))])</code></pre>
+<pre><code>##    ID Treatment  Sex Age Improved AgeDiscret
+## 1: 57   Treated Male  27     Some          3
+## 2: 46   Treated Male  29     None          3
+## 3: 77   Treated Male  30     None          3
+## 4: 17   Treated Male  32   Marked          3
+## 5: 36   Treated Male  46   Marked          5
+## 6: 23   Treated Male  58   Marked          6</code></pre>
+<blockquote>
+<p>For the first feature we create groups of age by rounding the real age.</p>
+<p>Note that we transform it to <code>factor</code> so the algorithm treat these age groups as independent values. Therefore, 20 is not closer to 30 than 60. To make it short, the distance between ages is lost in this transformation.</p>
+</blockquote>
+<p>Following is an even stronger simplification of the real age with an arbitrary split at 30 years old. I choose this value <strong>based on nothing</strong>. We will see later if simplifying the information based on arbitrary values is a good strategy (you may already have an idea of how well it will work…).</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">head</span>(df[,AgeCat:<span class="er">=</span><span class="st"> </span><span class="kw">as.factor</span>(<span class="kw">ifelse</span>(Age &gt;<span class="st"> </span><span class="dv">30</span>, <span class="st">&quot;Old&quot;</span>, <span class="st">&quot;Young&quot;</span>))])</code></pre>
+<pre><code>##    ID Treatment  Sex Age Improved AgeDiscret AgeCat
+## 1: 57   Treated Male  27     Some          3  Young
+## 2: 46   Treated Male  29     None          3  Young
+## 3: 77   Treated Male  30     None          3  Young
+## 4: 17   Treated Male  32   Marked          3    Old
+## 5: 36   Treated Male  46   Marked          5    Old
+## 6: 23   Treated Male  58   Marked          6    Old</code></pre>
+<p>We remove ID as there is nothing to learn from this feature (it would just add some noise).</p>
+<pre class="sourceCode r"><code class="sourceCode r">df[,ID:<span class="er">=</span><span class="ot">NULL</span>]</code></pre>
+<p>We will list the different values for the column <code>Treatment</code>:</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">levels</span>(df[,Treatment])</code></pre>
+<pre><code>## [1] &quot;Placebo&quot; &quot;Treated&quot;</code></pre>
+</div>
+<div id="one-hot-encoding" class="section level3">
+<h3><span class="header-section-number">2.2.3</span> One-hot encoding</h3>
+<p>Next step, we will transform the categorical data to dummy variables. This is the <a href="http://en.wikipedia.org/wiki/One-hot">one-hot encoding</a> step.</p>
+<p>The purpose is to transform each value of each <em>categorical</em> feature in a <em>binary</em> feature <code>{0, 1}</code>.</p>
+<p>For example, the column <code>Treatment</code> will be replaced by two columns, <code>Placebo</code>, and <code>Treated</code>. Each of them will be <em>binary</em>. Therefore, an observation which has the value <code>Placebo</code> in column <code>Treatment</code> before the transformation will have after the transformation the value <code>1</code> in the new column <code>Placebo</code> and the value <code>0</code> in the new column <code>Treated</code>. The column <code>Treatment</code> will disappear during the one-hot encoding.</p>
+<p>Column <code>Improved</code> is excluded because it will be our <code>label</code> column, the one we want to predict.</p>
+<pre class="sourceCode r"><code class="sourceCode r">sparse_matrix &lt;-<span class="st"> </span><span class="kw">sparse.model.matrix</span>(Improved~.-<span class="dv">1</span>, <span class="dt">data =</span> df)
+<span class="kw">head</span>(sparse_matrix)</code></pre>
+<pre><code>## 6 x 10 sparse Matrix of class &quot;dgCMatrix&quot;
+##                       
+## 1 . 1 1 27 1 . . . . 1
+## 2 . 1 1 29 1 . . . . 1
+## 3 . 1 1 30 1 . . . . 1
+## 4 . 1 1 32 1 . . . . .
+## 5 . 1 1 46 . . 1 . . .
+## 6 . 1 1 58 . . . 1 . .</code></pre>
+<blockquote>
+<p>Formulae <code>Improved~.-1</code> used above means transform all <em>categorical</em> features but column <code>Improved</code> to binary values. The <code>-1</code> is here to remove the first column which is full of <code>1</code> (this column is generated by the conversion). For more information, you can type <code>?sparse.model.matrix</code> in the console.</p>
+</blockquote>
+<p>Create the output <code>numeric</code> vector (not as a sparse <code>Matrix</code>):</p>
+<pre class="sourceCode r"><code class="sourceCode r">output_vector =<span class="st"> </span>df[,Y:<span class="er">=</span><span class="dv">0</span>][Improved ==<span class="st"> &quot;Marked&quot;</span>,Y:<span class="er">=</span><span class="dv">1</span>][,Y]</code></pre>
+<ol style="list-style-type: decimal">
+<li>set <code>Y</code> vector to <code>0</code>;</li>
+<li>set <code>Y</code> to <code>1</code> for rows where <code>Improved == Marked</code> is <code>TRUE</code> ;</li>
+<li>return <code>Y</code> vector.</li>
+</ol>
+</div>
+</div>
+</div>
+<div id="build-the-model" class="section level1">
+<h1><span class="header-section-number">3</span> Build the model</h1>
+<p>The code below is very usual. For more information, you can look at the documentation of <code>xgboost</code> function (or at the vignette <a href="https://github.com/tqchen/xgboost/blob/master/R-package/vignettes/xgboostPresentation.Rmd">Xgboost presentation</a>).</p>
+<pre class="sourceCode r"><code class="sourceCode r">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> sparse_matrix, <span class="dt">label =</span> output_vector, <span class="dt">max.depth =</span> <span class="dv">4</span>,
+               <span class="dt">eta =</span> <span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nround =</span> <span class="dv">10</span>,<span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</code></pre>
+<pre><code>## [0]  train-error:0.202381
+## [1]  train-error:0.166667
+## [2]  train-error:0.166667
+## [3]  train-error:0.166667
+## [4]  train-error:0.154762
+## [5]  train-error:0.154762
+## [6]  train-error:0.154762
+## [7]  train-error:0.166667
+## [8]  train-error:0.166667
+## [9]  train-error:0.166667</code></pre>
+<p>You can see some <code>train-error: 0.XXXXX</code> lines followed by a number. It decreases. Each line shows how well the model explains your data. Lower is better.</p>
+<p>A model which fits too well may <a href="http://en.wikipedia.org/wiki/Overfitting">overfit</a> (meaning it copy/paste too much the past, and won’t be that good to predict the future).</p>
+<blockquote>
+<p>Here you can see the numbers decrease until line 7 and then increase.</p>
+<p>It probably means we are overfitting. To fix that I should reduce the number of rounds to <code>nround = 4</code>. I will let things like that because I don’t really care for the purpose of this example :-)</p>
+</blockquote>
+</div>
+<div id="feature-importance" class="section level1">
+<h1><span class="header-section-number">4</span> Feature importance</h1>
+<div id="measure-feature-importance" class="section level2">
+<h2><span class="header-section-number">4.1</span> Measure feature importance</h2>
+<div id="build-the-feature-importance-data.table" class="section level3">
+<h3><span class="header-section-number">4.1.1</span> Build the feature importance data.table</h3>
+<p>In the code below, <code>sparse_matrix@Dimnames[[2]]</code> represents the column names of the sparse matrix. These names are the original values of the features (remember, each binary column == one value of one <em>categorical</em> feature).</p>
+<pre class="sourceCode r"><code class="sourceCode r">importance &lt;-<span class="st"> </span><span class="kw">xgb.importance</span>(sparse_matrix@Dimnames[[<span class="dv">2</span>]], <span class="dt">model =</span> bst)
+<span class="kw">head</span>(importance)</code></pre>
+<pre><code>##             Feature     Gain   Cover Frequence
+## 1:              Age 0.622032 0.67252   0.67241
+## 2: TreatmentPlacebo 0.285751 0.11917   0.10345
+## 3:          SexMale 0.048744 0.04522   0.08621
+## 4:      AgeDiscret6 0.016605 0.04785   0.05172
+## 5:      AgeDiscret3 0.016374 0.08029   0.05172
+## 6:      AgeDiscret4 0.009271 0.02859   0.01724</code></pre>
+<blockquote>
+<p>The column <code>Gain</code> provide the information we are looking for.</p>
+<p>As you can see, features are classified by <code>Gain</code>.</p>
+</blockquote>
+<p><code>Gain</code> is the improvement in accuracy brought by a feature to the branches it is on. The idea is that before adding a new split on a feature X to the branch there was some wrongly classified elements, after adding the split on this feature, there are two new branches, and each of these branch is more accurate (one branch saying if your observation is on this branch then it should be classified as <code>1</code>, and the other branch saying the exact opposite).</p>
+<p><code>Cover</code> measures the relative quantity of observations concerned by a feature.</p>
+<p><code>Frequence</code> is a simpler way to measure the <code>Gain</code>. It just counts the number of times a feature is used in all generated trees. You should not use it (unless you know why you want to use it).</p>
+</div>
+<div id="improvement-in-the-interpretability-of-feature-importance-data.table" class="section level3">
+<h3><span class="header-section-number">4.1.2</span> Improvement in the interpretability of feature importance data.table</h3>
+<p>We can go deeper in the analysis of the model. In the <code>data.table</code> above, we have discovered which features counts to predict if the illness will go or not. But we don’t yet know the role of these features. For instance, one of the question we may want to answer would be: does receiving a placebo treatment helps to recover from the illness?</p>
+<p>One simple solution is to count the co-occurrences of a feature and a class of the classification.</p>
+<p>For that purpose we will execute the same function as above but using two more parameters, <code>data</code> and <code>label</code>.</p>
+<pre class="sourceCode r"><code class="sourceCode r">importanceRaw &lt;-<span class="st"> </span><span class="kw">xgb.importance</span>(sparse_matrix@Dimnames[[<span class="dv">2</span>]], <span class="dt">model =</span> bst, <span class="dt">data =</span> sparse_matrix, <span class="dt">label =</span> output_vector)
+
+<span class="co"># Cleaning for better display</span>
+importanceClean &lt;-<span class="st"> </span>importanceRaw[,<span class="st">`</span><span class="dt">:=</span><span class="st">`</span>(<span class="dt">Cover=</span><span class="ot">NULL</span>, <span class="dt">Frequence=</span><span class="ot">NULL</span>)]
+
+<span class="kw">head</span>(importanceClean)</code></pre>
+<pre><code>##             Feature   Split    Gain RealCover RealCover %
+## 1: TreatmentPlacebo 1.00001 0.28575         7      0.2500
+## 2:              Age    61.5 0.16374        12      0.4286
+## 3:              Age      39 0.08706         8      0.2857
+## 4:              Age    57.5 0.06948        11      0.3929
+## 5:          SexMale 1.00001 0.04874         6      0.2143
+## 6:              Age    53.5 0.04621        10      0.3571</code></pre>
+<blockquote>
+<p>In the table above we have removed two not needed columns and select only the first lines.</p>
+</blockquote>
+<p>First thing you notice is the new column <code>Split</code>. It is the split applied to the feature on a branch of one of the tree. Each split is present, therefore a feature can appear several times in this table. Here we can see the feature <code>Age</code> is used several times with different splits.</p>
+<p>How the split is applied to count the co-occurrences? It is always <code>&lt;</code>. For instance, in the second line, we measure the number of persons under 61.5 years with the illness gone after the treatment.</p>
+<p>The two other new columns are <code>RealCover</code> and <code>RealCover %</code>. In the first column it measures the number of observations in the dataset where the split is respected and the label marked as <code>1</code>. The second column is the percentage of the whole population that <code>RealCover</code> represents.</p>
+<p>Therefore, according to our findings, getting a placebo doesn’t seem to help but being younger than 61 years may help (seems logic).</p>
+<blockquote>
+<p>You may wonder how to interpret the <code>&lt; 1.00001</code> on the first line. Basically, in a sparse <code>Matrix</code>, there is no <code>0</code>, therefore, looking for one hot-encoded categorical observations validating the rule <code>&lt; 1.00001</code> is like just looking for <code>1</code> for this feature.</p>
+</blockquote>
+</div>
+</div>
+<div id="plotting-the-feature-importance" class="section level2">
+<h2><span class="header-section-number">4.2</span> Plotting the feature importance</h2>
+<p>All these things are nice, but it would be even better to plot the results.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">xgb.plot.importance</span>(<span class="dt">importance_matrix =</span> importanceRaw)</code></pre>
+<p><img src="data:image/png;base64,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" title="plot of chunk unnamed-chunk-13" alt="plot of chunk unnamed-chunk-13" style="display: block; margin: auto;" /></p>
+<p>Feature have automatically been divided in 2 clusters: the interesting features… and the others.</p>
+<blockquote>
+<p>Depending of the dataset and the learning parameters you may have more than two clusters. Default value is to limit them to <code>10</code>, but you can increase this limit. Look at the function documentation for more information.</p>
+</blockquote>
+<p>According to the plot above, the most important features in this dataset to predict if the treatment will work are :</p>
+<ul>
+<li>the Age ;</li>
+<li>having received a placebo or not ;</li>
+<li>the sex is third but already included in the not interesting feature ;</li>
+<li>then we see our generated features (AgeDiscret). We can see that their contribution is very low.</li>
+</ul>
+</div>
+<div id="do-these-results-make-sense" class="section level2">
+<h2><span class="header-section-number">4.3</span> Do these results make sense?</h2>
+<p>Let’s check some <strong>Chi2</strong> between each of these features and the label.</p>
+<p>Higher <strong>Chi2</strong> means better correlation.</p>
+<pre class="sourceCode r"><code class="sourceCode r">c2 &lt;-<span class="st"> </span><span class="kw">chisq.test</span>(df$Age, df$Y)
+<span class="kw">print</span>(c2)</code></pre>
+<pre><code>## 
+##  Pearson's Chi-squared test
+## 
+## data:  df$Age and df$Y
+## X-squared = 35.48, df = 35, p-value = 0.4458</code></pre>
+<p>Pearson correlation between Age and illness disapearing is <strong>35.48</strong>.</p>
+<pre class="sourceCode r"><code class="sourceCode r">c2 &lt;-<span class="st"> </span><span class="kw">chisq.test</span>(df$AgeDiscret, df$Y)
+<span class="kw">print</span>(c2)</code></pre>
+<pre><code>## 
+##  Pearson's Chi-squared test
+## 
+## data:  df$AgeDiscret and df$Y
+## X-squared = 8.255, df = 5, p-value = 0.1427</code></pre>
+<p>Our first simplification of Age gives a Pearson correlation is <strong>8.26</strong>.</p>
+<pre class="sourceCode r"><code class="sourceCode r">c2 &lt;-<span class="st"> </span><span class="kw">chisq.test</span>(df$AgeCat, df$Y)
+<span class="kw">print</span>(c2)</code></pre>
+<pre><code>## 
+##  Pearson's Chi-squared test with Yates' continuity correction
+## 
+## data:  df$AgeCat and df$Y
+## X-squared = 2.357, df = 1, p-value = 0.1247</code></pre>
+<p>The perfectly random split I did between young and old at 30 years old have a low correlation of <strong>2.36</strong>. It’s a result we may expect as may be in my mind &gt; 30 years is being old (I am 32 and starting feeling old, this may explain that), but for the illness we are studying, the age to be vulnerable is not the same.</p>
+<p>Morality: don’t let your <em>gut</em> lower the quality of your model.</p>
+<p>In <em>data science</em> expression, there is the word <em>science</em> :-)</p>
+</div>
+</div>
+<div id="conclusion" class="section level1">
+<h1><span class="header-section-number">5</span> Conclusion</h1>
+<p>As you can see, in general <em>destroying information by simplifying it won’t improve your model</em>. <strong>Chi2</strong> just demonstrates that.</p>
+<p>But in more complex cases, creating a new feature based on existing one which makes link with the outcome more obvious may help the algorithm and improve the model.</p>
+<p>The case studied here is not enough complex to show that. Check <a href="http://www.kaggle.com/">Kaggle website</a> for some challenging datasets. However it’s almost always worse when you add some arbitrary rules.</p>
+<p>Moreover, you can notice that even if we have added some not useful new features highly correlated with other features, the boosting tree algorithm have been able to choose the best one, which in this case is the Age.</p>
+<p>Linear model may not be that smart in this scenario.</p>
+</div>
+<div id="special-note-what-about-random-forest" class="section level1">
+<h1><span class="header-section-number">6</span> Special Note: What about Random forest?</h1>
+<p>As you may know, <a href="http://en.wikipedia.org/wiki/Random_forest">Random Forest</a> algorithm is cousin with boosting and both are part of the <a href="http://en.wikipedia.org/wiki/Ensemble_learning">ensemble learning</a> family.</p>
+<p>Both trains several decision trees for one dataset. The <em>main</em> difference is that in Random Forest, trees are independent and in boosting, the tree <code>N+1</code> focus its learning on the loss (&lt;=&gt; what has not been well modeled by the tree <code>N</code>).</p>
+<p>This difference have an impact on a corner case in feature importance analysis: the <em>correlated features</em>.</p>
+<p>Imagine two features perfectly correlated, feature <code>A</code> and feature <code>B</code>. For one specific tree, if the algorithm needs one of them, it will choose randomly (true in both boosting and random forest).</p>
+<p>However, in Random Forest this random choice will be done for each tree, because each tree is independent from the others. Therefore, approximatively, depending of your parameters, 50% of the trees will choose feature <code>A</code> and the other 50% will choose feature <code>B</code>. So the <em>importance</em> of the information contained in <code>A</code> and <code>B</code> (which is the same, because they are perfectly correlated) is diluted in <code>A</code> and <code>B</code>. So you won’t easily know this information is important to predict what you want to predict! It is even worse when you have 10 correlated features…</p>
+<p>In boosting, when a specific link between feature and outcome have been learned by the algorithm, it will try to not refocus on it (in theory it is what happens, reality is not always that simple). Therefore, all the importance will be on feature <code>A</code> or on feature <code>B</code> (but not both). You will know that one feature have an important role in the link between the observations and the label. It is still up to you to search for the correlated features to the one detected as important if you need to know all of them.</p>
+</div>
+
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

@@ -11,7 +11,7 @@
 #' train <- agaricus.train
 #' test <- agaricus.test
 #' bst <- xgboost(data = train$data, label = train$label, max.depth = 2, 
-#'                eta = 1, nround = 2,objective = "binary:logistic")
+#'                eta = 1, nthread = 2, nround = 2,objective = "binary:logistic")
 #' xgb.save(bst, 'xgb.model')
 #' bst <- xgb.load('xgb.model')
 #' pred <- predict(bst, test$data)
@@ -22,7 +22,8 @@ xgb.save <- function(model, fname) {
     stop("xgb.save: fname must be character")
   }
   if (class(model) == "xgb.Booster") {
-    .Call("XGBoosterSaveModel_R", model, fname, PACKAGE = "xgboost")
+    model <- xgb.Booster.check(model)
+    .Call("XGBoosterSaveModel_R", model$handle, fname, PACKAGE = "xgboost")
     return(TRUE)
   }
   stop("xgb.save: the input must be xgb.Booster. Use xgb.DMatrix.save to save

@@ -1,12 +1,14 @@
 #' eXtreme Gradient Boosting (Tree) library
 #' 
-#' A simple interface for xgboost in R
+#' A simple interface for training xgboost model. Look at \code{\link{xgb.train}} function for a more advanced interface.
 #' 
 #' @param data takes \code{matrix}, \code{dgCMatrix}, local data file or 
 #'   \code{xgb.DMatrix}. 
 #' @param label the response variable. User should not set this field,
-#    if data is local data file or  \code{xgb.DMatrix}. 
-#' @param params the list of parameters. Commonly used ones are:
+#'    if data is local data file or  \code{xgb.DMatrix}. 
+#' @param params the list of parameters.
+#' 
+#' Commonly used ones are:
 #' \itemize{
 #'   \item \code{objective} objective function, common ones are
 #'   \itemize{
@@ -17,20 +19,25 @@
 #'   \item \code{max.depth} maximum depth of the tree
 #'   \item \code{nthread} number of thread used in training, if not set, all threads are used
 #' }
-#'
-#'   See \url{https://github.com/tqchen/xgboost/wiki/Parameters} for 
-#'   further details. See also demo/ for walkthrough example in R.
+#'   
+#'   Look at \code{\link{xgb.train}} for a more complete list of parameters or \url{https://github.com/tqchen/xgboost/wiki/Parameters} for the full list.
+#'   
+#'   See also \code{demo/} for walkthrough example in R.
+#' 
 #' @param nrounds the max number of iterations
 #' @param verbose If 0, xgboost will stay silent. If 1, xgboost will print 
 #'   information of performance. If 2, xgboost will print information of both
 #'   performance and construction progress information
+#' @param missing Missing is only used when input is dense matrix, pick a float 
+#'     value that represents missing value. Sometimes a data use 0 or other extreme value to represents missing values.
 #' @param ... other parameters to pass to \code{params}.
 #' 
 #' @details 
-#' This is the modeling function for xgboost.
+#' This is the modeling function for Xgboost.
 #' 
-#' Parallelization is automatically enabled if OpenMP is present.
-#' Number of threads can also be manually specified via "nthread" parameter
+#' Parallelization is automatically enabled if \code{OpenMP} is present.
+#' 
+#' Number of threads can also be manually specified via \code{nthread} parameter.
 #' 
 #' @examples
 #' data(agaricus.train, package='xgboost')
@@ -38,14 +45,19 @@
 #' train <- agaricus.train
 #' test <- agaricus.test
 #' bst <- xgboost(data = train$data, label = train$label, max.depth = 2, 
-#'                eta = 1, nround = 2,objective = "binary:logistic")
+#'                eta = 1, nthread = 2, nround = 2,objective = "binary:logistic")
 #' pred <- predict(bst, test$data)
 #' 
 #' @export
 #' 
-xgboost <- function(data = NULL, label = NULL, params = list(), nrounds, 
+xgboost <- function(data = NULL, label = NULL, missing = NULL, params = list(), nrounds, 
                     verbose = 1, ...) {
-  dtrain <- xgb.get.DMatrix(data, label)  
+  if (is.null(missing)) {
+    dtrain <- xgb.get.DMatrix(data, label)
+  } else {
+    dtrain <- xgb.get.DMatrix(data, label, missing)
+  }
+    
   params <- append(params, list(...))
   
   if (verbose > 0) {
@@ -69,7 +81,7 @@ xgboost <- function(data = NULL, label = NULL, params = list(), nrounds,
 #' 
 #' \itemize{
 #'  \item \code{label} the label for each record
-#'  \item \code{data} a sparse Matrix of \code{dgCMatrix} class, with 127 columns.
+#'  \item \code{data} a sparse Matrix of \code{dgCMatrix} class, with 126 columns.
 #' }
 #'
 #' @references
@@ -96,7 +108,7 @@ NULL
 #' 
 #' \itemize{
 #'  \item \code{label} the label for each record
-#'  \item \code{data} a sparse Matrix of \code{dgCMatrix} class, with 127 columns.
+#'  \item \code{data} a sparse Matrix of \code{dgCMatrix} class, with 126 columns.
 #' }
 #'
 #' @references
@@ -111,5 +123,5 @@ NULL
 #' @name agaricus.test
 #' @usage data(agaricus.test)
 #' @format A list containing a label vector, and a dgCMatrix object with 1611 
-#' rows and 127 variables
+#' rows and 126 variables
 NULL

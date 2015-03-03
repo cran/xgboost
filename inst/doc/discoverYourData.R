@@ -1,0 +1,67 @@
+## ----libLoading, results='hold', message=F, warning=F--------------------
+require(xgboost)
+require(Matrix)
+require(data.table)
+if (!require('vcd')) install.packages('vcd') 
+
+## ----, results='hide'----------------------------------------------------
+data(Arthritis)
+df <- data.table(Arthritis, keep.rownames = F)
+
+## ------------------------------------------------------------------------
+head(df)
+
+## ------------------------------------------------------------------------
+str(df)
+
+## ------------------------------------------------------------------------
+head(df[,AgeDiscret:= as.factor(round(Age/10,0))])
+
+## ------------------------------------------------------------------------
+head(df[,AgeCat:= as.factor(ifelse(Age > 30, "Old", "Young"))])
+
+## ----, results='hide'----------------------------------------------------
+df[,ID:=NULL]
+
+## ------------------------------------------------------------------------
+levels(df[,Treatment])
+
+## ----, warning=FALSE,message=FALSE---------------------------------------
+sparse_matrix <- sparse.model.matrix(Improved~.-1, data = df)
+head(sparse_matrix)
+
+## ------------------------------------------------------------------------
+output_vector = df[,Y:=0][Improved == "Marked",Y:=1][,Y]
+
+## ------------------------------------------------------------------------
+bst <- xgboost(data = sparse_matrix, label = output_vector, max.depth = 4,
+               eta = 1, nthread = 2, nround = 10,objective = "binary:logistic")
+
+
+## ------------------------------------------------------------------------
+importance <- xgb.importance(sparse_matrix@Dimnames[[2]], model = bst)
+head(importance)
+
+## ------------------------------------------------------------------------
+importanceRaw <- xgb.importance(sparse_matrix@Dimnames[[2]], model = bst, data = sparse_matrix, label = output_vector)
+
+# Cleaning for better display
+importanceClean <- importanceRaw[,`:=`(Cover=NULL, Frequence=NULL)]
+
+head(importanceClean)
+
+## ----, fig.width=8, fig.height=5, fig.align='center'---------------------
+xgb.plot.importance(importance_matrix = importanceRaw)
+
+## ----, warning=FALSE, message=FALSE--------------------------------------
+c2 <- chisq.test(df$Age, df$Y)
+print(c2)
+
+## ----, warning=FALSE, message=FALSE--------------------------------------
+c2 <- chisq.test(df$AgeDiscret, df$Y)
+print(c2)
+
+## ----, warning=FALSE, message=FALSE--------------------------------------
+c2 <- chisq.test(df$AgeCat, df$Y)
+print(c2)
+
