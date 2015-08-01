@@ -16,17 +16,10 @@
 
 namespace rabit {
 namespace utils {
-/*! \brief interface of i/o stream that support seek */
-class ISeekStream: public IStream {
- public:
-  /*! \brief seek to certain position of the file */
-  virtual void Seek(size_t pos) = 0;
-  /*! \brief tell the position of the stream */
-  virtual size_t Tell(void) = 0;
-};
-
+/*! \brief re-use definition of dmlc::SeekStream */
+typedef dmlc::SeekStream SeekStream;
 /*! \brief fixed size memory buffer */
-struct MemoryFixSizeBuffer : public ISeekStream {
+struct MemoryFixSizeBuffer : public SeekStream {
  public:
   MemoryFixSizeBuffer(void *p_buffer, size_t buffer_size)
       : p_buffer_(reinterpret_cast<char*>(p_buffer)),
@@ -38,7 +31,7 @@ struct MemoryFixSizeBuffer : public ISeekStream {
     utils::Assert(curr_ptr_ + size <= buffer_size_,
                   "read can not have position excceed buffer length");
     size_t nread = std::min(buffer_size_ - curr_ptr_, size);
-    if (nread != 0) memcpy(ptr, p_buffer_ + curr_ptr_, nread);
+    if (nread != 0) std::memcpy(ptr, p_buffer_ + curr_ptr_, nread);
     curr_ptr_ += nread;
     return nread;
   }
@@ -46,7 +39,7 @@ struct MemoryFixSizeBuffer : public ISeekStream {
     if (size == 0) return;
     utils::Assert(curr_ptr_ + size <=  buffer_size_,
                   "write position exceed fixed buffer size");
-    memcpy(p_buffer_ + curr_ptr_, ptr, size);
+    std::memcpy(p_buffer_ + curr_ptr_, ptr, size);
     curr_ptr_ += size;
   }
   virtual void Seek(size_t pos) {
@@ -55,7 +48,9 @@ struct MemoryFixSizeBuffer : public ISeekStream {
   virtual size_t Tell(void) {
     return curr_ptr_;
   }
-
+  virtual bool AtEnd(void) const {
+    return curr_ptr_ == buffer_size_;
+  }
  private:
   /*! \brief in memory buffer */
   char *p_buffer_;
@@ -66,7 +61,7 @@ struct MemoryFixSizeBuffer : public ISeekStream {
 };  // class MemoryFixSizeBuffer
 
 /*! \brief a in memory buffer that can be read and write as stream interface */
-struct MemoryBufferStream : public ISeekStream {
+struct MemoryBufferStream : public SeekStream {
  public:
   explicit MemoryBufferStream(std::string *p_buffer)
       : p_buffer_(p_buffer) {
@@ -77,7 +72,7 @@ struct MemoryBufferStream : public ISeekStream {
     utils::Assert(curr_ptr_ <= p_buffer_->length(),
                   "read can not have position excceed buffer length");
     size_t nread = std::min(p_buffer_->length() - curr_ptr_, size);
-    if (nread != 0) memcpy(ptr, &(*p_buffer_)[0] + curr_ptr_, nread);
+    if (nread != 0) std::memcpy(ptr, &(*p_buffer_)[0] + curr_ptr_, nread);
     curr_ptr_ += nread;
     return nread;
   }
@@ -86,7 +81,7 @@ struct MemoryBufferStream : public ISeekStream {
     if (curr_ptr_ + size > p_buffer_->length()) {
       p_buffer_->resize(curr_ptr_+size);
     }
-    memcpy(&(*p_buffer_)[0] + curr_ptr_, ptr, size);
+    std::memcpy(&(*p_buffer_)[0] + curr_ptr_, ptr, size);
     curr_ptr_ += size;
   }
   virtual void Seek(size_t pos) {
@@ -95,7 +90,9 @@ struct MemoryBufferStream : public ISeekStream {
   virtual size_t Tell(void) {
     return curr_ptr_;
   }
-
+  virtual bool AtEnd(void) const {
+    return curr_ptr_ == p_buffer_->length();
+  }
  private:
   /*! \brief in memory buffer */
   std::string *p_buffer_;

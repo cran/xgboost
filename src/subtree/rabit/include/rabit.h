@@ -16,7 +16,7 @@
 #if __cplusplus >= 201103L
 #include <functional>
 #endif  // C++11
-// contains definition of ISerializable
+// contains definition of Serializable
 #include "./rabit_serializable.h"
 // engine definition of rabit, defines internal implementation
 // to use rabit interface, there is no need to read engine.h
@@ -65,9 +65,8 @@ inline int GetRank(void);
 /*! \brief gets total number of processes */
 inline int GetWorldSize(void);
 /*! \brief whether rabit env is in distributed mode */
-inline bool IsDistributed(void) {
-  return GetWorldSize() != 1;
-}
+inline bool IsDistributed(void);
+
 /*! \brief gets processor's name */
 inline std::string GetProcessorName(void);
 /*!
@@ -184,8 +183,8 @@ inline void Allreduce(DType *sendrecvbuf, size_t count,
  *
  * \sa CheckPoint, VersionNumber
  */
-inline int LoadCheckPoint(ISerializable *global_model,
-                          ISerializable *local_model = NULL);
+inline int LoadCheckPoint(Serializable *global_model,
+                          Serializable *local_model = NULL);
 /*!
  * \brief checkpoints the model, meaning a stage of execution has finished.
  *  every time we call check point, a version number will be increased by one
@@ -200,8 +199,8 @@ inline int LoadCheckPoint(ISerializable *global_model,
    *       So, only CheckPoint with the global_model if possible
    * \sa LoadCheckPoint, VersionNumber
    */
-inline void CheckPoint(const ISerializable *global_model,
-                       const ISerializable *local_model = NULL);
+inline void CheckPoint(const Serializable *global_model,
+                       const Serializable *local_model = NULL);
 /*!
  * \brief This function can be used to replace CheckPoint for global_model only,
  *   when certain condition is met (see detailed explanation).
@@ -223,7 +222,7 @@ inline void CheckPoint(const ISerializable *global_model,
  *   is the same in every node
  * \sa LoadCheckPoint, CheckPoint, VersionNumber
  */
-inline void LazyCheckPoint(const ISerializable *global_model);
+inline void LazyCheckPoint(const Serializable *global_model);
 /*!
  * \return version number of the current stored model,
  *         which means how many calls to CheckPoint we made so far

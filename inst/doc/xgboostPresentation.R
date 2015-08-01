@@ -1,8 +1,5 @@
 ## ----installGithub, eval=FALSE-------------------------------------------
-#  devtools::install_github('tqchen/xgboost', subdir='R-package')
-
-## ----installCran, eval=FALSE---------------------------------------------
-#  install.packages('xgboost')
+#  devtools::install_github('dmlc/xgboost', subdir='R-package')
 
 ## ----libLoading, results='hold', message=F, warning=F--------------------
 require(xgboost)

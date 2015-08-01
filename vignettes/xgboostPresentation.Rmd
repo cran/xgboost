@@ -27,7 +27,7 @@ It is an efficient and scalable implementation of gradient boosting framework by
 
 It supports various objective functions, including *regression*, *classification* and *ranking*. The package is made to be extendible, so that users are also allowed to define their own objective functions easily. 
 
-It has been [used](https://github.com/tqchen/xgboost) to win several [Kaggle](http://www.kaggle.com) competitions. 
+It has been [used](https://github.com/dmlc/xgboost) to win several [Kaggle](http://www.kaggle.com) competitions. 
 
 It has several features:
 
@@ -49,7 +49,7 @@ Github version
 For up-to-date version (highly recommended), install from *Github*:
 
 ```{r installGithub, eval=FALSE}
-devtools::install_github('tqchen/xgboost', subdir='R-package')
+devtools::install_github('dmlc/xgboost', subdir='R-package')
 ```
 
 > *Windows* user will need to install [RTools](http://cran.r-project.org/bin/windows/Rtools/) first.
@@ -57,11 +57,9 @@ devtools::install_github('tqchen/xgboost', subdir='R-package')
 Cran version
 ------------
 
-For stable version on *CRAN*, run:
+As of 2015-03-13, ‘xgboost’ was removed from the CRAN repository.
 
-```{r installCran, eval=FALSE}
-install.packages('xgboost')
-```
+Formerly available versions can be obtained from the CRAN [archive](http://cran.r-project.org/src/contrib/Archive/xgboost)
 
 Learning
 ========
@@ -339,6 +337,17 @@ err <- as.numeric(sum(as.integer(pred > 0.5) != label))/length(label)
 print(paste("test-error=", err))
 ```
 
+View feature importance/influence from the learnt model
+-------------------------------------------------------
+
+Feature importance is similar to R gbm package's relative influence (rel.inf). 
+
+```
+importance_matrix <- xgb.importance(model = bst)
+print(importance_matrix)
+xgb.plot.importance(importance_matrix)
+```
+
 View the trees from a model
 ---------------------------
 
@@ -346,6 +355,12 @@ You can dump the tree you learned using `xgb.dump` into a text file.
 
 ```{r dump, message=T, warning=F}
 xgb.dump(bst, with.stats = T)
+```
+
+You can plot the trees from your model using ```xgb.plot.tree``
+
+```
+xgb.plot.tree(model = bst)
 ```
 
 > if you provide a path to `fname` parameter you can save the trees to your hard drive.
