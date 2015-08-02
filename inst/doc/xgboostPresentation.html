@@ -553,8 +553,8 @@ bst &lt;- xgb.train(data=dtrain, max.depth=2, eta=1, nthread = 2, nround=2, watc
 <pre><code class="r">bst &lt;- xgb.train(data=dtrain, booster = &quot;gblinear&quot;, max.depth=2, nthread = 2, nround=2, watchlist=watchlist, eval.metric = &quot;error&quot;, eval.metric = &quot;logloss&quot;, objective = &quot;binary:logistic&quot;)
 </code></pre>
 
-<pre><code>## [0]  train-error:0.024106    train-logloss:0.182138  test-error:0.018001 test-logloss:0.180697
-## [1]  train-error:0.004299    train-logloss:0.069175  test-error:0.004345 test-logloss:0.067102
+<pre><code>## [0]  train-error:0.024259    train-logloss:0.183142  test-error:0.017381 test-logloss:0.181439
+## [1]  train-error:0.004146    train-logloss:0.069416  test-error:0.003724 test-logloss:0.067254
 </code></pre>
 
 <p>In this specific case, <em>linear boosting</em> gets sligtly better performance metrics than decision trees based algorithm. </p>

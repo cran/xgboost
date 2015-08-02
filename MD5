@@ -1,4 +1,4 @@
-4f13a92ef50611fda6c3c485c35a83c8 *DESCRIPTION
+e1c5b0db409cdfe603ff32e80288b127 *DESCRIPTION
 6b41661e73bc937026fbcf78a04fd287 *LICENSE
 57c7b780aa5738ada3b49e5afae57254 *NAMESPACE
 6a46c49aeae5b929b270bcff7cc725b5 *R/getinfo.xgb.DMatrix.R
@@ -37,13 +37,13 @@ afb065ad9096ff937980046237eddc3d *demo/poisson_regression.R
 20b16dbdd7b51abeef504dc2e296f205 *demo/predict_leaf_indices.R
 43672d7aca1cd0c605ab90470b137751 *inst/doc/discoverYourData.R
 784578c85d1234f2416a2164d36a574b *inst/doc/discoverYourData.Rmd
-9640b62b77680ab85874e0b90a284dbd *inst/doc/discoverYourData.html
+5623aa90ca551f6ad7f4082824fd02c6 *inst/doc/discoverYourData.html
 7342187ddd01848d9ddc2d443b6a6d6f *inst/doc/xgboost.R
 067402a8692bdbb30845c187f01da1d7 *inst/doc/xgboost.Rnw
-28b1bb8101158075b7f791ad1cae29a7 *inst/doc/xgboost.pdf
+20ed9c8594bc447e0f9b667c8c81a8c4 *inst/doc/xgboost.pdf
 ae02331d2c048a52226c225c4a8c5fef *inst/doc/xgboostPresentation.R
 f1f0b96315f03ab26b5700a7b3d88739 *inst/doc/xgboostPresentation.Rmd
-31ed9e73f80bda1c6ae02bc3b83ec4c8 *inst/doc/xgboostPresentation.html
+67c78ffa778515cfa077d0790a50f24c *inst/doc/xgboostPresentation.html
 3679bfda1827b5a623f52a8756dbb467 *man/agaricus.test.Rd
 771c548b820cc90f8ae71dc94fe13c78 *man/agaricus.train.Rd
 8357d03bca10f080b6c6e74b6a5ba078 *man/getinfo.Rd
@@ -138,7 +138,7 @@ d170b44f5b3db116b08338b578813f7c *src/subtree/rabit/src/engine_empty.cc
 68524a213a6103589d20bd72f3596144 *src/subtree/rabit/src/socket.h
 82bd139f822b3de692f68dc7071fbd2f *src/wrapper/xgboost_wrapper.cpp
 639508dae2e4f710a89700b736bf5edd *src/wrapper/xgboost_wrapper.h
-7aba1ed6ec2124d3529713c1e3d37810 *src/xgboost_R.cpp
+c7818a87785f607065165800b7bfed36 *src/xgboost_R.cpp
 3f90685da3ab3bab5f30d67b3b4b5dcb *src/xgboost_R.h
 107ff96df6e1871d36262acfaf45a6e9 *src/xgboost_assert.c
 784578c85d1234f2416a2164d36a574b *vignettes/discoverYourData.Rmd
