@@ -1,7 +1,7 @@
 Package: xgboost
 Type: Package
 Title: Extreme Gradient Boosting
-Version: 0.4-2
+Version: 0.4-3
 Date: 2015-08-01
 Author: Tianqi Chen <tianqi.tchen@gmail.com>, Tong He <hetong007@gmail.com>, Michael Benesty <michael@benesty.fr>
 Maintainer: Tong He <hetong007@gmail.com>
@@ -24,6 +24,6 @@ Depends: R (>= 2.10)
 Imports: Matrix (>= 1.1-0), methods, data.table (>= 1.9.4), magrittr
         (>= 1.5), stringr (>= 0.6.2)
 NeedsCompilation: yes
-Packaged: 2015-08-01 18:21:31 UTC; ubuntu
+Packaged: 2016-02-15 12:18:25 UTC; hetong007
 Repository: CRAN
-Date/Publication: 2015-08-02 08:23:27
+Date/Publication: 2016-02-15 14:41:12

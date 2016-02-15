@@ -1,4 +1,4 @@
-e1c5b0db409cdfe603ff32e80288b127 *DESCRIPTION
+4c47b7223783ef329883f22a3269d994 *DESCRIPTION
 6b41661e73bc937026fbcf78a04fd287 *LICENSE
 57c7b780aa5738ada3b49e5afae57254 *NAMESPACE
 6a46c49aeae5b929b270bcff7cc725b5 *R/getinfo.xgb.DMatrix.R
@@ -139,7 +139,7 @@ d170b44f5b3db116b08338b578813f7c *src/subtree/rabit/src/engine_empty.cc
 82bd139f822b3de692f68dc7071fbd2f *src/wrapper/xgboost_wrapper.cpp
 639508dae2e4f710a89700b736bf5edd *src/wrapper/xgboost_wrapper.h
 c7818a87785f607065165800b7bfed36 *src/xgboost_R.cpp
-3f90685da3ab3bab5f30d67b3b4b5dcb *src/xgboost_R.h
+3ee259437c50a6c51a1d09c5b208171d *src/xgboost_R.h
 107ff96df6e1871d36262acfaf45a6e9 *src/xgboost_assert.c
 784578c85d1234f2416a2164d36a574b *vignettes/discoverYourData.Rmd
 cb24a90cb8120bd71b9c20605234289d *vignettes/vignette.css
