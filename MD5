@@ -1,4 +1,4 @@
-4c47b7223783ef329883f22a3269d994 *DESCRIPTION
+6deeb85ed2cdd71d18d92ac4cf9034c5 *DESCRIPTION
 6b41661e73bc937026fbcf78a04fd287 *LICENSE
 57c7b780aa5738ada3b49e5afae57254 *NAMESPACE
 6a46c49aeae5b929b270bcff7cc725b5 *R/getinfo.xgb.DMatrix.R
@@ -76,7 +76,7 @@ f1ff10e11f32d76ba320e265a1588042 *src/src/io/dmlc_simple.cpp
 62621b9ace103b09af95bbf79aed2813 *src/src/io/io.cpp
 e35cf2c15da973d62470ab1a3b94a239 *src/src/io/io.h
 0cd6b05ac8723487b2bfcb0bca856408 *src/src/io/libsvm_parser.h
-48a5ce8c2b0f4355dad59f51f13fd24e *src/src/io/page_dmatrix-inl.hpp
+db7efbb2c4b767d8479b45837fb7f3f8 *src/src/io/page_dmatrix-inl.hpp
 ca2485cedaf86216d17fd211056c06df *src/src/io/page_fmatrix-inl.hpp
 54fa81036d08691307ec881715a09411 *src/src/io/simple_dmatrix-inl.hpp
 f2e6298c76c3acba2ed35a5fd8d37f6c *src/src/io/simple_fmatrix-inl.hpp

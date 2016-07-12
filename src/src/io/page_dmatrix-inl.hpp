@@ -61,7 +61,7 @@ class ThreadRowPageIterator: public utils::IIterator<RowBatch> {
 };
 
 /*! \brief data matrix using page */
-template<int TKMagic>
+template<unsigned TKMagic>
 class DMatrixPageBase : public DataMatrix {
  public:
   DMatrixPageBase(void) : DataMatrix(kMagic) {
@@ -186,7 +186,7 @@ class DMatrixPageBase : public DataMatrix {
     iter_->Load(utils::FileStream(utils::FopenCheck(fname_row.c_str(), "rb")));
     // save data matrix
     utils::FileStream fs(utils::FopenCheck(cache_file, "wb"));
-    int tmagic = kMagic;
+    unsigned tmagic = kMagic;
     fs.Write(&tmagic, sizeof(tmagic));
     this->info.SaveBinary(fs);
     fs.Close();
@@ -198,13 +198,13 @@ class DMatrixPageBase : public DataMatrix {
     }
   }
   /*! \brief magic number used to identify DMatrix */
-  static const int kMagic = TKMagic;
+  static const unsigned kMagic = TKMagic;
   /*! \brief page size 32 MB */
   static const size_t kPageSize = 32UL << 20UL;
 
  protected:
   virtual void set_cache_file(const std::string &cache_file)  = 0;
-  virtual void CheckMagic(int tmagic)  = 0;
+  virtual void CheckMagic(unsigned tmagic)  = 0;
   /*! \brief row iterator */
   ThreadRowPageIterator *iter_;
 };
@@ -223,7 +223,7 @@ class DMatrixPage : public DMatrixPageBase<0xffffab02> {
   virtual void set_cache_file(const std::string &cache_file) {
     fmat_->set_cache_file(cache_file);
   }
-  virtual void CheckMagic(int tmagic) {
+  virtual void CheckMagic(unsigned tmagic) {
     utils::Check(tmagic == DMatrixPageBase<0xffffab02>::kMagic ||
                  tmagic == DMatrixPageBase<0xffffab03>::kMagic,
                  "invalid format,magic number mismatch");
@@ -247,7 +247,7 @@ class DMatrixHalfRAM : public DMatrixPageBase<0xffffab03> {
   }
   virtual void set_cache_file(const std::string &cache_file) {
   }
-  virtual void CheckMagic(int tmagic) {
+  virtual void CheckMagic(unsigned tmagic) {
     utils::Check(tmagic == DMatrixPageBase<0xffffab02>::kMagic ||
                  tmagic == DMatrixPageBase<0xffffab03>::kMagic,
                  "invalid format,magic number mismatch");
