@@ -2,7 +2,7 @@
 require(xgboost)
 require(Matrix)
 require(data.table)
-if (!require('vcd')) install.packages('vcd') 
+if (!require('vcd')) install.packages('vcd')
 
 ## ---- results='hide'-----------------------------------------------------
 data(Arthritis)
@@ -34,24 +34,24 @@ head(sparse_matrix)
 output_vector = df[,Improved] == "Marked"
 
 ## ------------------------------------------------------------------------
-bst <- xgboost(data = sparse_matrix, label = output_vector, max.depth = 4,
-               eta = 1, nthread = 2, nround = 10,objective = "binary:logistic")
+bst <- xgboost(data = sparse_matrix, label = output_vector, max_depth = 4,
+               eta = 1, nthread = 2, nrounds = 10,objective = "binary:logistic")
 
 
 ## ------------------------------------------------------------------------
-importance <- xgb.importance(sparse_matrix@Dimnames[[2]], model = bst)
+importance <- xgb.importance(feature_names = colnames(sparse_matrix), model = bst)
 head(importance)
 
 ## ------------------------------------------------------------------------
-importanceRaw <- xgb.importance(sparse_matrix@Dimnames[[2]], model = bst, data = sparse_matrix, label = output_vector)
+importanceRaw <- xgb.importance(feature_names = colnames(sparse_matrix), model = bst, data = sparse_matrix, label = output_vector)
 
 # Cleaning for better display
-importanceClean <- importanceRaw[,`:=`(Cover=NULL, Frequence=NULL)]
+importanceClean <- importanceRaw[,`:=`(Cover=NULL, Frequency=NULL)]
 
 head(importanceClean)
 
 ## ---- fig.width=8, fig.height=5, fig.align='center'----------------------
-xgb.plot.importance(importance_matrix = importanceRaw)
+xgb.plot.importance(importance_matrix = importance)
 
 ## ---- warning=FALSE, message=FALSE---------------------------------------
 c2 <- chisq.test(df$Age, output_vector)
@@ -72,8 +72,8 @@ train <- agaricus.train
 test <- agaricus.test
 
 #Random Forest™ - 1000 trees
-bst <- xgboost(data = train$data, label = train$label, max.depth = 4, num_parallel_tree = 1000, subsample = 0.5, colsample_bytree =0.5, nround = 1, objective = "binary:logistic")
+bst <- xgboost(data = train$data, label = train$label, max_depth = 4, num_parallel_tree = 1000, subsample = 0.5, colsample_bytree =0.5, nrounds = 1, objective = "binary:logistic")
 
 #Boosting - 3 rounds
-bst <- xgboost(data = train$data, label = train$label, max.depth = 4, nround = 3, objective = "binary:logistic")
+bst <- xgboost(data = train$data, label = train$label, max_depth = 4, nrounds = 3, objective = "binary:logistic")
 
