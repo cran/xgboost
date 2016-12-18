@@ -1,4 +1,4 @@
-b5bd76a060467c615f3a20f1ea5a201e *DESCRIPTION
+bd94e6415af107c343ca358b8df52db9 *DESCRIPTION
 3aa9098a4db694cf4c46f74c438140f2 *LICENSE
 cf8b6da85b90ca3d88e0661a0e4550ca *NAMESPACE
 82eb3f0fb34eb9d4ad75c23aa2f106eb *R/callbacks.R
@@ -21,7 +21,10 @@ c8cfc0dd509e885898ec9d9b9e1b47d7 *R/xgb.plot.deepness.R
 2cc621ab5951ff644b96f4fd58526958 *R/xgb.save.raw.R
 823e41d62fdb6f18be9ba21c509e0974 *R/xgb.train.R
 30049e6974b6182c80ed1e0cbc2ebd23 *R/xgboost.R
-d109111d11fd98d6f136b074523d96ef *build/vignette.rds
+6bb1d87bb072781ee8a8c5e57cbe58a3 *build/vignette.rds
+ba3caf48933f8c648233c7cf67566f2f *cleanup
+6c8c6171300ce821515b51d00b674783 *configure
+efa4c50ffa94a5eddab762c7cfc804ee *configure.ac
 05e29359ef24243df589703588987c0e *data/agaricus.test.rda
 9ebe1e11ce9d3bbc68acae073d6f2a21 *data/agaricus.train.rda
 dc67b4ee6c791f761bdca7cf40a5d294 *demo/00Index
@@ -39,13 +42,13 @@ d69af4431dc80a62e9e6e17048971c07 *demo/predict_leaf_indices.R
 2399b33ca9f168cd4691597a8a1c397d *demo/tweedie_regression.R
 a69b98ea9207d13847aabba1b154c3eb *inst/doc/discoverYourData.R
 be909dd3534749d2b808c845c46b8174 *inst/doc/discoverYourData.Rmd
-fd1618e2a01f85e3096b9c36970b0564 *inst/doc/discoverYourData.html
+6fdbc3ed21db2b1b14b3b672b791924a *inst/doc/discoverYourData.html
 cf7664836b08bdf4c328767ff74c3d50 *inst/doc/xgboost.R
 d395b352037384dd173cc27cee833f02 *inst/doc/xgboost.Rnw
-54b5ea59f5de4d672d89faeed88cf964 *inst/doc/xgboost.pdf
+f6bcea032c05c820fee22369aba259c7 *inst/doc/xgboost.pdf
 3bea4166e712076858eabaa27e7fd4aa *inst/doc/xgboostPresentation.R
 2465c04a3ee2d4d89d5059a3e595e508 *inst/doc/xgboostPresentation.Rmd
-2f63908aed78553a3afdd7fd7b8e61cf *inst/doc/xgboostPresentation.html
+88cb04d939633a2e20983980c60b6c3d *inst/doc/xgboostPresentation.html
 4100a7ba1fc89ad72b4128fd3b941019 *man/agaricus.test.Rd
 def24976d48087f9262a406b7b85ecd3 *man/agaricus.train.Rd
 6fbd04e4f9f89fe1821f9ecfc6d4a170 *man/callbacks.Rd
@@ -82,7 +85,7 @@ b5a4c54de763eb1fb74c7e6af68faecf *man/xgb.save.Rd
 dba46ce7fd6deb178b320455ebb53249 *man/xgb.save.raw.Rd
 a6a5ba0d2b286532e624f03564f8758e *man/xgb.train.Rd
 db43fd1eaed172a9e8d7339e3503e90d *man/xgboost-deprecated.Rd
-e7d7415367088d4388c0e36bbacd18a9 *src/Makevars
+a9df9ddab23ac63297aebbc1162f4659 *src/Makevars.in
 e7d7415367088d4388c0e36bbacd18a9 *src/Makevars.win
 07029b4204ba0caf9f33b22d84f2b136 *src/amalgamation/dmlc-minimum0.cc
 b930f7f03d48fa70438f073cd90c7a02 *src/amalgamation/xgboost-all0.cc
