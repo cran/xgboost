@@ -2,7 +2,8 @@
 if (require('knitr')) opts_chunk$set(fig.width = 5, fig.height = 5, fig.align = 'center', tidy = FALSE, warning = FALSE, cache = TRUE)
 
 ## ----prelim,echo=FALSE---------------------------------------------------
-xgboost.version = '0.4-2'
+xgboost.version <- packageDescription("xgboost")$Version
+
 
 ## ----Training and prediction with iris-----------------------------------
 library(xgboost)

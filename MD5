@@ -1,4 +1,4 @@
-bd94e6415af107c343ca358b8df52db9 *DESCRIPTION
+b6d22a6ddef902dca7ad79794353d48d *DESCRIPTION
 3aa9098a4db694cf4c46f74c438140f2 *LICENSE
 cf8b6da85b90ca3d88e0661a0e4550ca *NAMESPACE
 82eb3f0fb34eb9d4ad75c23aa2f106eb *R/callbacks.R
@@ -23,8 +23,8 @@ c8cfc0dd509e885898ec9d9b9e1b47d7 *R/xgb.plot.deepness.R
 30049e6974b6182c80ed1e0cbc2ebd23 *R/xgboost.R
 6bb1d87bb072781ee8a8c5e57cbe58a3 *build/vignette.rds
 ba3caf48933f8c648233c7cf67566f2f *cleanup
-6c8c6171300ce821515b51d00b674783 *configure
-efa4c50ffa94a5eddab762c7cfc804ee *configure.ac
+e2176c90f1e830f005699116da75f3dc *configure
+510a6548da14788ea6b8a02ca4dbcdb2 *configure.ac
 05e29359ef24243df589703588987c0e *data/agaricus.test.rda
 9ebe1e11ce9d3bbc68acae073d6f2a21 *data/agaricus.train.rda
 dc67b4ee6c791f761bdca7cf40a5d294 *demo/00Index
@@ -42,13 +42,13 @@ d69af4431dc80a62e9e6e17048971c07 *demo/predict_leaf_indices.R
 2399b33ca9f168cd4691597a8a1c397d *demo/tweedie_regression.R
 a69b98ea9207d13847aabba1b154c3eb *inst/doc/discoverYourData.R
 be909dd3534749d2b808c845c46b8174 *inst/doc/discoverYourData.Rmd
-6fdbc3ed21db2b1b14b3b672b791924a *inst/doc/discoverYourData.html
-cf7664836b08bdf4c328767ff74c3d50 *inst/doc/xgboost.R
-d395b352037384dd173cc27cee833f02 *inst/doc/xgboost.Rnw
-f6bcea032c05c820fee22369aba259c7 *inst/doc/xgboost.pdf
+4b725f0b8dbadaba79bd9b0460cc89f9 *inst/doc/discoverYourData.html
+10b4dd4964343ffed3271f40bc8bb4f2 *inst/doc/xgboost.R
+4b9174787964072628b55e5625a48e59 *inst/doc/xgboost.Rnw
+832bc3bcffdef9a04c850ea363140bcb *inst/doc/xgboost.pdf
 3bea4166e712076858eabaa27e7fd4aa *inst/doc/xgboostPresentation.R
 2465c04a3ee2d4d89d5059a3e595e508 *inst/doc/xgboostPresentation.Rmd
-88cb04d939633a2e20983980c60b6c3d *inst/doc/xgboostPresentation.html
+4c7394a2fff57610e31eba0a1f9d9028 *inst/doc/xgboostPresentation.html
 4100a7ba1fc89ad72b4128fd3b941019 *man/agaricus.test.Rd
 def24976d48087f9262a406b7b85ecd3 *man/agaricus.train.Rd
 6fbd04e4f9f89fe1821f9ecfc6d4a170 *man/callbacks.Rd
@@ -196,7 +196,7 @@ a278b09ad55b83f10cbc5982dfa63241 *src/src/common/math.h
 ddc31021015d6d1f62ed4d748fee3384 *src/src/common/quantile.h
 eabc9508d6e4b323c4ac0286b3300931 *src/src/common/random.h
 7d68029550a4e08c9d67946857585dd9 *src/src/common/sync.h
-254ebad91aba037244860067c811fc38 *src/src/common/thread_local.h
+1c0965c5db311947041900639a31ef71 *src/src/common/thread_local.h
 df8a8056a4cae04cffc6c8e39a4fccfe *src/src/data/data.cc
 288af76484bfa203125ebf66387b3f01 *src/src/data/simple_csr_source.cc
 9722b1b5c0118b87f23ed6898f75c610 *src/src/data/simple_csr_source.h
@@ -211,7 +211,7 @@ f00abf7423fb04832754004c72f3b007 *src/src/data/sparse_page_dmatrix.h
 607b1b62539f93ae19d1ad0fb52c9f27 *src/src/data/sparse_page_writer.cc
 1c0d1bfb9f00a7362f409602f9ad5a21 *src/src/gbm/gblinear.cc
 ad6637712a4fa73582f9b52badd3e533 *src/src/gbm/gbm.cc
-942fba703f606097b9c7465c4fc11945 *src/src/gbm/gbtree.cc
+1ef1fa2f47614f79650910a16cd8824b *src/src/gbm/gbtree.cc
 46c67c48b7e1a99b360b433a5c0e9ffa *src/src/learner.cc
 fe88174ffde0ccc10ef3254a2f12e415 *src/src/logging.cc
 988b30b08a1e327fe1acf6d74d57368a *src/src/metric/elementwise_metric.cc
@@ -251,6 +251,6 @@ fc5dd6609a5d4b713ebbbc502d474e76 *tests/testthat/test_parameter_exposure.R
 e0f60804b2a8feadbbbc21445de0e510 *tests/testthat/test_update.R
 be909dd3534749d2b808c845c46b8174 *vignettes/discoverYourData.Rmd
 cb24a90cb8120bd71b9c20605234289d *vignettes/vignette.css
-d395b352037384dd173cc27cee833f02 *vignettes/xgboost.Rnw
+4b9174787964072628b55e5625a48e59 *vignettes/xgboost.Rnw
 f801e061547fa04e50a1df78b7c42a21 *vignettes/xgboost.bib
 2465c04a3ee2d4d89d5059a3e595e508 *vignettes/xgboostPresentation.Rmd
