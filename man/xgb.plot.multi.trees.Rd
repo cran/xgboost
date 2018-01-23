@@ -58,4 +58,3 @@ p <- xgb.plot.multi.trees(model = bst, feature_names = colnames(agaricus.train$d
 print(p)
 
 }
-

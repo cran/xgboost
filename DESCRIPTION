@@ -1,8 +1,8 @@
 Package: xgboost
 Type: Package
 Title: Extreme Gradient Boosting
-Version: 0.6-4
-Date: 2017-01-04
+Version: 0.6.4.1
+Date: 2018-01-22
 Author: Tianqi Chen <tianqi.tchen@gmail.com>, Tong He <hetong007@gmail.com>,
     Michael Benesty <michael@benesty.fr>, Vadim Khotilovich <khotilovich@gmail.com>,
     Yuan Tang <terrytangyuan@gmail.com>
@@ -26,8 +26,8 @@ Suggests: knitr, rmarkdown, ggplot2 (>= 1.0.1), DiagrammeR (>= 0.9.0),
 Depends: R (>= 3.3.0)
 Imports: Matrix (>= 1.1-0), methods, data.table (>= 1.9.6), magrittr
         (>= 1.5), stringi (>= 0.5.2)
-RoxygenNote: 5.0.1
+RoxygenNote: 6.0.1
 NeedsCompilation: yes
-Packaged: 2017-01-05 06:38:47 UTC; hetong007
+Packaged: 2018-01-23 19:17:32 UTC; hetong007
 Repository: CRAN
-Date/Publication: 2017-01-05 10:40:06
+Date/Publication: 2018-01-23 21:57:26 UTC

@@ -425,9 +425,9 @@ bst &lt;- xgboost(data = dtrain, max_depth = 2, eta = 1, nthread = 2, nrounds = 
 bst &lt;- xgboost(data = dtrain, max_depth = 2, eta = 1, nthread = 2, nrounds = 2, objective = &quot;binary:logistic&quot;, verbose = 2)
 </code></pre>
 
-<pre><code>## [22:38:46] amalgamation/../src/tree/updater_prune.cc:74: tree pruning end, 1 roots, 6 extra nodes, 0 pruned nodes, max_depth=2
+<pre><code>## [11:17:30] amalgamation/../src/tree/updater_prune.cc:74: tree pruning end, 1 roots, 6 extra nodes, 0 pruned nodes, max_depth=2
 ## [1]  train-error:0.046522 
-## [22:38:46] amalgamation/../src/tree/updater_prune.cc:74: tree pruning end, 1 roots, 4 extra nodes, 0 pruned nodes, max_depth=2
+## [11:17:30] amalgamation/../src/tree/updater_prune.cc:74: tree pruning end, 1 roots, 4 extra nodes, 0 pruned nodes, max_depth=2
 ## [2]  train-error:0.022263
 </code></pre>
 
@@ -560,8 +560,8 @@ bst &lt;- xgb.train(data=dtrain, max_depth=2, eta=1, nthread = 2, nrounds=2, wat
 <pre><code class="r">bst &lt;- xgb.train(data=dtrain, booster = &quot;gblinear&quot;, max_depth=2, nthread = 2, nrounds=2, watchlist=watchlist, eval_metric = &quot;error&quot;, eval_metric = &quot;logloss&quot;, objective = &quot;binary:logistic&quot;)
 </code></pre>
 
-<pre><code>## [1]  train-error:0.024413    train-logloss:0.183124  test-error:0.018001 test-logloss:0.181580 
-## [2]  train-error:0.004453    train-logloss:0.069566  test-error:0.003724 test-logloss:0.067582
+<pre><code>## [1]  train-error:0.023491    train-logloss:0.182193  test-error:0.018001 test-logloss:0.180818 
+## [2]  train-error:0.003992    train-logloss:0.068945  test-error:0.003724 test-logloss:0.066951
 </code></pre>
 
 <p>In this specific case, <em>linear boosting</em> gets sligtly better performance metrics than decision trees based algorithm.</p>
@@ -584,7 +584,7 @@ bst &lt;- xgb.train(data=dtrain, max_depth=2, eta=1, nthread = 2, nrounds=2, wat
 dtrain2 &lt;- xgb.DMatrix(&quot;dtrain.buffer&quot;)
 </code></pre>
 
-<pre><code>## [22:38:46] 6513x126 matrix with 143286 entries loaded from dtrain.buffer
+<pre><code>## [11:17:30] 6513x126 matrix with 143286 entries loaded from dtrain.buffer
 </code></pre>
 
 <pre><code class="r">bst &lt;- xgb.train(data=dtrain2, max_depth=2, eta=1, nthread = 2, nrounds=2, watchlist=watchlist, objective = &quot;binary:logistic&quot;)

@@ -62,4 +62,3 @@ xgb.importance(colnames(agaricus.train$data), model = bst,
                data = agaricus.train$data, label = agaricus.train$label)
 
 }
-

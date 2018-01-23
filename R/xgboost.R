@@ -107,5 +107,5 @@ NULL
 #' @importFrom graphics title
 #' 
 #' @import methods
-#' @useDynLib xgboost
+#' @useDynLib xgboost, .registration = TRUE
 NULL

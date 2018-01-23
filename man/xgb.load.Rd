@@ -23,4 +23,3 @@ xgb.save(bst, 'xgb.model')
 bst <- xgb.load('xgb.model')
 pred <- predict(bst, test$data)
 }
-

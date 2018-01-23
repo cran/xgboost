@@ -5,6 +5,8 @@ require(data.table)
 require(Matrix)
 require(vcd)
 
+float_tolerance = 5e-6
+
 set.seed(1982)
 data(Arthritis)
 df <- data.table(Arthritis, keep.rownames = F)
@@ -88,14 +90,16 @@ if (grepl('Windows', Sys.info()[['sysname']]) || grepl('Linux', Sys.info()[['sys
       # check that lossless conversion works with 17 digits
       # numeric -> character -> numeric
       X <- 10^runif(100, -20, 20)
-      X2X <- as.numeric(format(X, digits = 17))
-      expect_identical(X, X2X)
+      if (capabilities('long.double')) {
+          X2X <- as.numeric(format(X, digits = 17))
+          expect_identical(X, X2X)
+      }
       # retrieved attributes to be the same as written
       for (x in X) {
         xgb.attr(bst.Tree, "x") <- x
-        expect_identical(as.numeric(xgb.attr(bst.Tree, "x")), x)
+        expect_equal(as.numeric(xgb.attr(bst.Tree, "x")), x, tolerance = float_tolerance)
         xgb.attributes(bst.Tree) <- list(a = "A", b = x)
-        expect_identical(as.numeric(xgb.attr(bst.Tree, "b")), x)
+        expect_equal(as.numeric(xgb.attr(bst.Tree, "b")), x, tolerance = float_tolerance)
       }
     })
 }

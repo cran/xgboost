@@ -46,4 +46,3 @@ bst <- xgboost(data = agaricus.train$data, label = agaricus.train$label, max_dep
 xgb.plot.tree(feature_names = colnames(agaricus.train$data), model = bst)
 
 }
-
