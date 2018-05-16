@@ -134,7 +134,7 @@ struct CLIParam : public dmlc::Parameter<CLIParam> {
         char evname[256];
         CHECK_EQ(sscanf(kv.first.c_str(), "eval[%[^]]", evname), 1)
             << "must specify evaluation name for display";
-        eval_data_names.push_back(std::string(evname));
+        eval_data_names.emplace_back(evname);
         eval_data_paths.push_back(kv.second);
       }
     }
@@ -155,6 +155,7 @@ struct CLIParam : public dmlc::Parameter<CLIParam> {
 DMLC_REGISTER_PARAMETER(CLIParam);
 
 void CLITrain(const CLIParam& param) {
+  const double tstart_data_load = dmlc::GetTime();
   if (rabit::IsDistributed()) {
     std::string pname = rabit::GetProcessorName();
     LOG(CONSOLE) << "start " << pname << ":" << rabit::GetRank();
@@ -176,7 +177,7 @@ void CLITrain(const CLIParam& param) {
   std::vector<std::string> eval_data_names = param.eval_data_names;
   if (param.eval_train) {
     eval_datasets.push_back(dtrain.get());
-    eval_data_names.push_back(std::string("train"));
+    eval_data_names.emplace_back("train");
   }
   // initialize the learner.
   std::unique_ptr<Learner> learner(Learner::Create(cache_mats));
@@ -192,6 +193,9 @@ void CLITrain(const CLIParam& param) {
       learner->Configure(param.cfg);
       learner->InitModel();
     }
+  }
+  if (param.silent == 0) {
+    LOG(INFO) << "Loading data: " << dmlc::GetTime() - tstart_data_load << " sec";
   }
   // start training.
   const double start = dmlc::GetTime();
@@ -314,13 +318,13 @@ void CLIPredict(const CLIParam& param) {
   std::unique_ptr<Learner> learner(Learner::Create({}));
   std::unique_ptr<dmlc::Stream> fi(
       dmlc::Stream::Create(param.model_in.c_str(), "r"));
-  learner->Configure(param.cfg);
   learner->Load(fi.get());
+  learner->Configure(param.cfg);
 
   if (param.silent == 0) {
     LOG(CONSOLE) << "start prediction...";
   }
-  std::vector<bst_float> preds;
+  HostDeviceVector<bst_float> preds;
   learner->Predict(dtest.get(), param.pred_margin, &preds, param.ntree_limit);
   if (param.silent == 0) {
     LOG(CONSOLE) << "writing prediction to " << param.name_pred;
@@ -328,7 +332,7 @@ void CLIPredict(const CLIParam& param) {
   std::unique_ptr<dmlc::Stream> fo(
       dmlc::Stream::Create(param.name_pred.c_str(), "w"));
   dmlc::ostream os(fo.get());
-  for (bst_float p : preds) {
+  for (bst_float p : preds.HostVector()) {
     os << p << '\n';
   }
   // force flush before fo destruct.
@@ -343,17 +347,17 @@ int CLIRunTask(int argc, char *argv[]) {
   rabit::Init(argc, argv);
 
   std::vector<std::pair<std::string, std::string> > cfg;
-  cfg.push_back(std::make_pair("seed", "0"));
+  cfg.emplace_back("seed", "0");
 
   common::ConfigIterator itr(argv[1]);
   while (itr.Next()) {
-    cfg.push_back(std::make_pair(std::string(itr.name()), std::string(itr.val())));
+    cfg.emplace_back(std::string(itr.Name()), std::string(itr.Val()));
   }
 
   for (int i = 2; i < argc; ++i) {
     char name[256], val[256];
     if (sscanf(argv[i], "%[^=]=%s", name, val) == 2) {
-      cfg.push_back(std::make_pair(std::string(name), std::string(val)));
+      cfg.emplace_back(std::string(name), std::string(val));
     }
   }
   CLIParam param;

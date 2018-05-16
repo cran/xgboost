@@ -22,11 +22,11 @@ class SimpleDMatrix : public DMatrix {
   explicit SimpleDMatrix(std::unique_ptr<DataSource>&& source)
       : source_(std::move(source)) {}
 
-  MetaInfo& info() override {
+  MetaInfo& Info() override {
     return source_->info;
   }
 
-  const MetaInfo& info() const override {
+  const MetaInfo& Info() const override {
     return source_->info;
   }
 
@@ -36,11 +36,11 @@ class SimpleDMatrix : public DMatrix {
     return iter;
   }
 
-  bool HaveColAccess() const override {
-    return col_size_.size() != 0;
+  bool HaveColAccess(bool sorted) const override {
+    return col_size_.size() != 0 && col_iter_.sorted_ == sorted;
   }
 
-  const RowSet& buffered_rowset() const override {
+  const RowSet& BufferedRowset() const override {
     return buffered_rowset_;
   }
 
@@ -49,8 +49,8 @@ class SimpleDMatrix : public DMatrix {
   }
 
   float GetColDensity(size_t cidx) const override {
-    size_t nmiss = buffered_rowset_.size() - col_size_[cidx];
-    return 1.0f - (static_cast<float>(nmiss)) / buffered_rowset_.size();
+    size_t nmiss = buffered_rowset_.Size() - col_size_[cidx];
+    return 1.0f - (static_cast<float>(nmiss)) / buffered_rowset_.Size();
   }
 
   dmlc::DataIter<ColBatch>* ColIterator() override;
@@ -59,7 +59,7 @@ class SimpleDMatrix : public DMatrix {
 
   void InitColAccess(const std::vector<bool>& enabled,
                      float subsample,
-                     size_t max_row_perbatch) override;
+                     size_t max_row_perbatch, bool sorted) override;
 
   bool SingleColBlock() const override;
 
@@ -67,7 +67,7 @@ class SimpleDMatrix : public DMatrix {
   // in-memory column batch iterator.
   struct ColBatchIter: dmlc::DataIter<ColBatch> {
    public:
-    ColBatchIter() : data_ptr_(0) {}
+    ColBatchIter()  = default;
     void BeforeFirst() override {
       data_ptr_ = 0;
     }
@@ -86,9 +86,11 @@ class SimpleDMatrix : public DMatrix {
     // column sparse pages
     std::vector<std::unique_ptr<SparsePage> > cpages_;
     // data pointer
-    size_t data_ptr_;
+    size_t data_ptr_{0};
     // temporal space for batch
     ColBatch batch_;
+    // Is column sorted?
+    bool sorted_{false};
   };
 
   // source data pointer.
@@ -103,16 +105,16 @@ class SimpleDMatrix : public DMatrix {
   // internal function to make one batch from row iter.
   void MakeOneBatch(const std::vector<bool>& enabled,
                     float pkeep,
-                    SparsePage *pcol);
+                    SparsePage *pcol, bool sorted);
 
   void MakeManyBatch(const std::vector<bool>& enabled,
                      float pkeep,
-                     size_t max_row_perbatch);
+                     size_t max_row_perbatch, bool sorted);
 
   void MakeColPage(const RowBatch& batch,
                    size_t buffer_begin,
                    const std::vector<bool>& enabled,
-                   SparsePage* pcol);
+                   SparsePage* pcol, bool sorted);
 };
 }  // namespace data
 }  // namespace xgboost

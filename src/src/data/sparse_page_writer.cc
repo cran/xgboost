@@ -32,9 +32,9 @@ SparsePage::Writer::Writer(
           std::unique_ptr<SparsePage::Format> fmt(
               SparsePage::Format::Create(format_shard));
           fo->Write(format_shard);
-          std::unique_ptr<SparsePage> page;
+          std::shared_ptr<SparsePage> page;
           while (wqueue->Pop(&page)) {
-            if (page.get() == nullptr) break;
+            if (page == nullptr) break;
             fmt->Write(*page, fo.get());
             qrecycle_.Push(std::move(page));
           }
@@ -47,7 +47,7 @@ SparsePage::Writer::Writer(
 SparsePage::Writer::~Writer() {
   for (auto& queue : qworkers_) {
     // use nullptr to signal termination.
-    std::unique_ptr<SparsePage> sig(nullptr);
+    std::shared_ptr<SparsePage> sig(nullptr);
     queue.Push(std::move(sig));
   }
   for (auto& thread : workers_) {
@@ -55,13 +55,13 @@ SparsePage::Writer::~Writer() {
   }
 }
 
-void SparsePage::Writer::PushWrite(std::unique_ptr<SparsePage>&& page) {
+void SparsePage::Writer::PushWrite(std::shared_ptr<SparsePage>&& page) {
   qworkers_[clock_ptr_].Push(std::move(page));
   clock_ptr_ = (clock_ptr_ + 1) % workers_.size();
 }
 
-void SparsePage::Writer::Alloc(std::unique_ptr<SparsePage>* out_page) {
-  CHECK(out_page->get() == nullptr);
+void SparsePage::Writer::Alloc(std::shared_ptr<SparsePage>* out_page) {
+  CHECK(*out_page == nullptr);
   if (num_free_buffer_ != 0) {
     out_page->reset(new SparsePage());
     --num_free_buffer_;

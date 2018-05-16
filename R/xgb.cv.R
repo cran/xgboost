@@ -34,6 +34,7 @@
 #'   \item \code{rmse} Rooted mean square error
 #'   \item \code{logloss} negative log-likelihood function
 #'   \item \code{auc} Area under curve
+#'   \item \code{aucpr} Area under PR curve
 #'   \item \code{merror} Exact matching error, used to evaluate multi-class classification
 #' }
 #' @param obj customized objective function. Returns gradient and second order 
@@ -82,12 +83,13 @@
 #'   \item \code{params} parameters that were passed to the xgboost library. Note that it does not 
 #'         capture parameters changed by the \code{\link{cb.reset.parameters}} callback.
 #'   \item \code{callbacks} callback functions that were either automatically assigned or 
-#'         explicitely passed.
+#'         explicitly passed.
 #'   \item \code{evaluation_log} evaluation history storead as a \code{data.table} with the
 #'         first column corresponding to iteration number and the rest corresponding to the 
 #'         CV-based evaluation means and standard deviations for the training and test CV-sets.
 #'         It is created by the \code{\link{cb.evaluation.log}} callback.
 #'   \item \code{niter} number of boosting iterations.
+#'   \item \code{nfeatures} number of features in training data.
 #'   \item \code{folds} the list of CV folds' indices - either those passed through the \code{folds} 
 #'         parameter or randomly generated.
 #'   \item \code{best_iteration} iteration number with the best evaluation metric value
@@ -130,13 +132,13 @@ xgb.cv <- function(params=list(), data, nrounds, nfold, label = NULL, missing = 
   #  stop("Either 'eval_metric' or 'feval' must be provided for CV")
   
   # Check the labels
-  if ( (class(data) == 'xgb.DMatrix' && is.null(getinfo(data, 'label'))) ||
-       (class(data) != 'xgb.DMatrix' && is.null(label)))
+  if ( (inherits(data, 'xgb.DMatrix') && is.null(getinfo(data, 'label'))) ||
+       (!inherits(data, 'xgb.DMatrix') && is.null(label)))
     stop("Labels must be provided for CV either through xgb.DMatrix, or through 'label=' when 'data' is matrix")
   
   # CV folds
   if(!is.null(folds)) {
-    if(class(folds) != "list" || length(folds) < 2)
+    if(!is.list(folds) || length(folds) < 2)
       stop("'folds' must be a list with 2 or more elements that are vectors of indices for each CV-fold")
     nfold <- length(folds)
   } else {
@@ -153,7 +155,7 @@ xgb.cv <- function(params=list(), data, nrounds, nfold, label = NULL, missing = 
   params <- c(params, list(silent = 1))
   print_every_n <- max( as.integer(print_every_n), 1L)
   if (!has.callbacks(callbacks, 'cb.print.evaluation') && verbose) {
-    callbacks <- add.cb(callbacks, cb.print.evaluation(print_every_n))
+    callbacks <- add.cb(callbacks, cb.print.evaluation(print_every_n, showsd = showsd))
   }
   # evaluation log callback: always is on in CV
   evaluation_log <- list()
@@ -165,12 +167,12 @@ xgb.cv <- function(params=list(), data, nrounds, nfold, label = NULL, missing = 
   if (!is.null(early_stopping_rounds) &&
       !has.callbacks(callbacks, 'cb.early.stop')) {
     callbacks <- add.cb(callbacks, cb.early.stop(early_stopping_rounds, 
-                                                 maximize=maximize, verbose=verbose))
+                                                 maximize = maximize, verbose = verbose))
   }
   # CV-predictions callback
   if (prediction &&
       !has.callbacks(callbacks, 'cb.cv.predict')) {
-    callbacks <- add.cb(callbacks, cb.cv.predict(save_models=FALSE))
+    callbacks <- add.cb(callbacks, cb.cv.predict(save_models = FALSE))
   }
   # Sort the callbacks into categories
   cb <- categorize.callbacks(callbacks)
@@ -178,12 +180,13 @@ xgb.cv <- function(params=list(), data, nrounds, nfold, label = NULL, missing = 
   
   # create the booster-folds
   dall <- xgb.get.DMatrix(data, label, missing)
-  bst_folds <- lapply(1:length(folds), function(k) {
+  bst_folds <- lapply(seq_along(folds), function(k) {
     dtest  <- slice(dall, folds[[k]])
     dtrain <- slice(dall, unlist(folds[-k]))
-    bst <- xgb.Booster(params, list(dtrain, dtest))
-    list(dtrain=dtrain, bst=bst, watchlist=list(train=dtrain, test=dtest), index=folds[[k]])
+    handle <- xgb.Booster.handle(params, list(dtrain, dtest))
+    list(dtrain = dtrain, bst = handle, watchlist = list(train = dtrain, test=dtest), index = folds[[k]])
   })
+  rm(dall)
   # a "basket" to collect some results from callbacks
   basket <- list()
 
@@ -212,7 +215,7 @@ xgb.cv <- function(params=list(), data, nrounds, nfold, label = NULL, missing = 
     
     if (stop_condition) break
   }
-  for (f in cb$finalize) f(finalize=TRUE)
+  for (f in cb$finalize) f(finalize = TRUE)
 
   # the CV result
   ret <- list(
@@ -221,6 +224,7 @@ xgb.cv <- function(params=list(), data, nrounds, nfold, label = NULL, missing = 
     callbacks = callbacks,
     evaluation_log = evaluation_log,
     niter = end_iteration,
+    nfeatures = ncol(data),
     folds = folds
   )
   ret <- c(ret, basket)
@@ -254,8 +258,8 @@ xgb.cv <- function(params=list(), data, nrounds, nfold, label = NULL, missing = 
 #' @rdname print.xgb.cv
 #' @method print xgb.cv.synchronous
 #' @export
-print.xgb.cv.synchronous <- function(x, verbose=FALSE, ...) {
-  cat('##### xgb.cv ', length(x$folds), '-folds\n', sep='')
+print.xgb.cv.synchronous <- function(x, verbose = FALSE, ...) {
+  cat('##### xgb.cv ', length(x$folds), '-folds\n', sep = '')
   
   if (verbose) {
     if (!is.null(x$call)) {
@@ -267,7 +271,7 @@ print.xgb.cv.synchronous <- function(x, verbose=FALSE, ...) {
       cat( '  ', 
            paste(names(x$params), 
                  paste0('"', unlist(x$params), '"'),
-                 sep=' = ', collapse=', '), '\n', sep='')
+                 sep = ' = ', collapse = ', '), '\n', sep = '')
     }
     if (!is.null(x$callbacks) && length(x$callbacks) > 0) {
       cat('callbacks:\n')
@@ -280,7 +284,7 @@ print.xgb.cv.synchronous <- function(x, verbose=FALSE, ...) {
     for (n in c('niter', 'best_iteration', 'best_ntreelimit')) {
       if (is.null(x[[n]])) 
         next
-      cat(n, ': ', x[[n]], '\n', sep='')
+      cat(n, ': ', x[[n]], '\n', sep = '')
     }
 
     if (!is.null(x$pred)) {

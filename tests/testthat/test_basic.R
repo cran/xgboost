@@ -8,6 +8,7 @@ train <- agaricus.train
 test <- agaricus.test
 set.seed(1994)
 
+# disable some tests for Win32
 windows_flag = .Platform$OS.type == "windows" &&
                .Machine$sizeof.pointer != 8
 solaris_flag = (Sys.info()['sysname'] == "SunOS")
@@ -111,7 +112,7 @@ test_that("train and predict RF with softprob", {
   set.seed(11)
   bst <- xgboost(data = as.matrix(iris[, -5]), label = lb,
                  max_depth = 3, eta = 0.9, nthread = 2, nrounds = nrounds,
-                 objective = "multi:softprob", num_class=3,
+                 objective = "multi:softprob", num_class=3, verbose = 0,
                  num_parallel_tree = 4, subsample = 0.5, colsample_bytree = 0.5)
   expect_equal(bst$niter, 15)
   expect_equal(xgb.ntree(bst), 15*3*4)
@@ -146,25 +147,25 @@ test_that("training continuation works", {
 
   # for the reference, use 4 iterations at once:
   set.seed(11)
-  bst <- xgb.train(param, dtrain, nrounds = 4, watchlist)
+  bst <- xgb.train(param, dtrain, nrounds = 4, watchlist, verbose = 0)
   # first two iterations:
   set.seed(11)
-  bst1 <- xgb.train(param, dtrain, nrounds = 2, watchlist)
+  bst1 <- xgb.train(param, dtrain, nrounds = 2, watchlist, verbose = 0)
   # continue for two more:
-  bst2 <- xgb.train(param, dtrain, nrounds = 2, watchlist, xgb_model = bst1)
+  bst2 <- xgb.train(param, dtrain, nrounds = 2, watchlist, verbose = 0, xgb_model = bst1)
   if (!windows_flag && !solaris_flag)
     expect_equal(bst$raw, bst2$raw)
   expect_false(is.null(bst2$evaluation_log))
   expect_equal(dim(bst2$evaluation_log), c(4, 2))
   expect_equal(bst2$evaluation_log, bst$evaluation_log)
   # test continuing from raw model data
-  bst2 <- xgb.train(param, dtrain, nrounds = 2, watchlist, xgb_model = bst1$raw)
+  bst2 <- xgb.train(param, dtrain, nrounds = 2, watchlist, verbose = 0, xgb_model = bst1$raw)
   if (!windows_flag && !solaris_flag)
     expect_equal(bst$raw, bst2$raw)
   expect_equal(dim(bst2$evaluation_log), c(2, 2))
   # test continuing from a model in file
   xgb.save(bst1, "xgboost.model")
-  bst2 <- xgb.train(param, dtrain, nrounds = 2, watchlist, xgb_model = "xgboost.model")
+  bst2 <- xgb.train(param, dtrain, nrounds = 2, watchlist, verbose = 0, xgb_model = "xgboost.model")
   if (!windows_flag && !solaris_flag)
     expect_equal(bst$raw, bst2$raw)
   expect_equal(dim(bst2$evaluation_log), c(2, 2))
@@ -173,9 +174,11 @@ test_that("training continuation works", {
 
 test_that("xgb.cv works", {
   set.seed(11)
-  cv <- xgb.cv(data = train$data, label = train$label, max_depth = 2, nfold = 5,
-               eta = 1., nthread = 2, nrounds = 2, objective = "binary:logistic",
-               verbose=TRUE)
+  expect_output(
+    cv <- xgb.cv(data = train$data, label = train$label, max_depth = 2, nfold = 5,
+                 eta = 1., nthread = 2, nrounds = 2, objective = "binary:logistic",
+                 verbose=TRUE)
+  , "train-error:")
   expect_is(cv, 'xgb.cv.synchronous')
   expect_false(is.null(cv$evaluation_log))
   expect_lt(cv$evaluation_log[, min(test_error_mean)], 0.03)
@@ -186,4 +189,37 @@ test_that("xgb.cv works", {
   expect_false(is.null(cv$params) && is.list(cv$params))
   expect_false(is.null(cv$callbacks))
   expect_false(is.null(cv$call))
+})
+
+test_that("train and predict with non-strict classes", {
+  # standard dense matrix input
+  train_dense <- as.matrix(train$data)
+  bst <- xgboost(data = train_dense, label = train$label, max_depth = 2,
+                 eta = 1, nthread = 2, nrounds = 2, objective = "binary:logistic", verbose = 0)
+  pr0 <- predict(bst, train_dense)
+  
+  # dense matrix-like input of non-matrix class
+  class(train_dense) <- 'shmatrix'
+  expect_true(is.matrix(train_dense))
+  expect_error(
+    bst <- xgboost(data = train_dense, label = train$label, max_depth = 2,
+                   eta = 1, nthread = 2, nrounds = 2, objective = "binary:logistic", verbose = 0)
+    , regexp = NA)
+  expect_error(pr <- predict(bst, train_dense), regexp = NA)
+  expect_equal(pr0, pr)
+  
+  # dense matrix-like input of non-matrix class with some inheritance
+  class(train_dense) <- c('pphmatrix','shmatrix')
+  expect_true(is.matrix(train_dense))
+  expect_error(
+    bst <- xgboost(data = train_dense, label = train$label, max_depth = 2,
+                   eta = 1, nthread = 2, nrounds = 2, objective = "binary:logistic", verbose = 0)
+    , regexp = NA)
+  expect_error(pr <- predict(bst, train_dense), regexp = NA)
+  expect_equal(pr0, pr)
+  
+  # when someone inhertis from xgb.Booster, it should still be possible to use it as xgb.Booster
+  class(bst) <- c('super.Booster', 'xgb.Booster')
+  expect_error(pr <- predict(bst, train_dense), regexp = NA)
+  expect_equal(pr0, pr)
 })

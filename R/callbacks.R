@@ -41,6 +41,7 @@ NULL
 #' Callback closure for printing the result of evaluation
 #' 
 #' @param period  results would be printed every number of periods
+#' @param showsd  whether standard deviations should be printed (when available)
 #' 
 #' @details
 #' The callback function prints the result of evaluation at every \code{period} iterations.
@@ -56,7 +57,7 @@ NULL
 #' \code{\link{callbacks}}
 #' 
 #' @export
-cb.print.evaluation <- function(period=1) {
+cb.print.evaluation <- function(period = 1, showsd = TRUE) {
   
   callback <- function(env = parent.frame()) {
     if (length(env$bst_evaluation) == 0 ||
@@ -68,7 +69,8 @@ cb.print.evaluation <- function(period=1) {
     if ((i-1) %% period == 0 ||
         i == env$begin_iteration ||
         i == env$end_iteration) {
-      msg <- format.eval.string(i, env$bst_evaluation, env$bst_evaluation_err)
+      stdev <- if (showsd) env$bst_evaluation_err else NULL
+      msg <- format.eval.string(i, env$bst_evaluation, stdev)
       cat(msg, '\n')
     }
   }
@@ -125,12 +127,12 @@ cb.evaluation.log <- function() {
       # rearrange col order from _mean,_mean,...,_std,_std,...
       # to be _mean,_std,_mean,_std,...
       len <- length(mnames)
-      means <- mnames[1:(len/2)]
+      means <- mnames[seq_len(len/2)]
       stds <- mnames[(len/2 + 1):len]
       cnames <- numeric(len)
       cnames[c(TRUE, FALSE)] <- means
       cnames[c(FALSE, TRUE)] <- stds
-      env$evaluation_log <- env$evaluation_log[, c('iter', cnames), with=FALSE]
+      env$evaluation_log <- env$evaluation_log[, c('iter', cnames), with = FALSE]
     }
   }
   
@@ -288,8 +290,8 @@ cb.reset.parameters <- function(new_params) {
 #' \code{\link{xgb.attr}}
 #' 
 #' @export
-cb.early.stop <- function(stopping_rounds, maximize=FALSE, 
-                          metric_name=NULL, verbose=TRUE) {
+cb.early.stop <- function(stopping_rounds, maximize = FALSE, 
+                          metric_name = NULL, verbose = TRUE) {
   # state variables
   best_iteration <- -1
   best_ntreelimit <- -1
@@ -306,7 +308,7 @@ cb.early.stop <- function(stopping_rounds, maximize=FALSE,
       metric_idx <<- which(gsub('-', '_', metric_name) == eval_names)
       if (length(metric_idx) == 0)
         stop("'metric_name' for early stopping is not one of the following:\n",
-             paste(eval_names, collapse=' '), '\n')
+             paste(eval_names, collapse = ' '), '\n')
     }
     if (is.null(metric_name) &&
         length(env$bst_evaluation) > 1) {
@@ -318,9 +320,9 @@ cb.early.stop <- function(stopping_rounds, maximize=FALSE,
     
     metric_name <<- eval_names[metric_idx]
     
-    # maximixe is usually NULL when not set in xgb.train and built-in metrics
+    # maximize is usually NULL when not set in xgb.train and built-in metrics
     if (is.null(maximize))
-      maximize <<- ifelse(grepl('(_auc|_map|_ndcg)', metric_name), TRUE, FALSE)
+      maximize <<- grepl('(_auc|_map|_ndcg)', metric_name)
 
     if (verbose && NVL(env$rank, 0) == 0)
       cat("Will train until ", metric_name, " hasn't improved in ", 
@@ -332,7 +334,7 @@ cb.early.stop <- function(stopping_rounds, maximize=FALSE,
     env$stop_condition <- FALSE
     
     if (!is.null(env$bst)) {
-      if (class(env$bst) != 'xgb.Booster')
+      if (!inherits(env$bst, 'xgb.Booster'))
         stop("'bst' in the parent frame must be an 'xgb.Booster'")
       if (!is.null(best_score <- xgb.attr(env$bst$handle, 'best_score'))) {
         best_score <<- as.numeric(best_score)
@@ -507,7 +509,7 @@ cb.cv.predict <- function(save_models = FALSE) {
     if (save_models) {
       env$basket$models <- lapply(env$bst_folds, function(fd) {
         xgb.attr(fd$bst, 'niter') <- env$end_iteration - 1
-        xgb.Booster.check(xgb.handleToBooster(fd$bst), saveraw = TRUE)
+        xgb.Booster.complete(xgb.handleToBooster(fd$bst), saveraw = TRUE)
       })
     }
   }
@@ -522,12 +524,229 @@ cb.cv.predict <- function(save_models = FALSE) {
 }
 
 
+#' Callback closure for collecting the model coefficients history of a gblinear booster
+#' during its training.
+#'
+#' @param sparse when set to FALSE/TURE, a dense/sparse matrix is used to store the result.
+#'       Sparse format is useful when one expects only a subset of coefficients to be non-zero,
+#'       when using the "thrifty" feature selector with fairly small number of top features
+#'       selected per iteration.
+#'
+#' @details
+#' To keep things fast and simple, gblinear booster does not internally store the history of linear
+#' model coefficients at each boosting iteration. This callback provides a workaround for storing
+#' the coefficients' path, by extracting them after each training iteration.
+#'
+#' Callback function expects the following values to be set in its calling frame:
+#' \code{bst} (or \code{bst_folds}).
+#'
+#' @return
+#' Results are stored in the \code{coefs} element of the closure.
+#' The \code{\link{xgb.gblinear.history}} convenience function provides an easy way to access it.
+#' With \code{xgb.train}, it is either a dense of a sparse matrix.
+#' While with \code{xgb.cv}, it is a list (an element per each fold) of such matrices.
+#'
+#' @seealso
+#' \code{\link{callbacks}}, \code{\link{xgb.gblinear.history}}.
+#'
+#' @examples
+#' #### Binary classification:
+#' #
+#' # In the iris dataset, it is hard to linearly separate Versicolor class from the rest
+#' # without considering the 2nd order interactions:
+#' require(magrittr)
+#' x <- model.matrix(Species ~ .^2, iris)[,-1]
+#' colnames(x)
+#' dtrain <- xgb.DMatrix(scale(x), label = 1*(iris$Species == "versicolor"))
+#' param <- list(booster = "gblinear", objective = "reg:logistic", eval_metric = "auc",
+#'               lambda = 0.0003, alpha = 0.0003, nthread = 2)
+#' # For 'shotgun', which is a default linear updater, using high eta values may result in
+#' # unstable behaviour in some datasets. With this simple dataset, however, the high learning
+#' # rate does not break the convergence, but allows us to illustrate the typical pattern of
+#' # "stochastic explosion" behaviour of this lock-free algorithm at early boosting iterations.
+#' bst <- xgb.train(param, dtrain, list(tr=dtrain), nrounds = 200, eta = 1.,
+#'                  callbacks = list(cb.gblinear.history()))
+#' # Extract the coefficients' path and plot them vs boosting iteration number:
+#' coef_path <- xgb.gblinear.history(bst)
+#' matplot(coef_path, type = 'l')
+#' 
+#' # With the deterministic coordinate descent updater, it is safer to use higher learning rates.
+#' # Will try the classical componentwise boosting which selects a single best feature per round:
+#' bst <- xgb.train(param, dtrain, list(tr=dtrain), nrounds = 200, eta = 0.8,
+#'                  updater = 'coord_descent', feature_selector = 'thrifty', top_k = 1,
+#'                  callbacks = list(cb.gblinear.history()))
+#' xgb.gblinear.history(bst) %>% matplot(type = 'l')
+#' #  Componentwise boosting is known to have similar effect to Lasso regularization.
+#' # Try experimenting with various values of top_k, eta, nrounds,
+#' # as well as different feature_selectors.
+#'
+#' # For xgb.cv:
+#' bst <- xgb.cv(param, dtrain, nfold = 5, nrounds = 100, eta = 0.8,
+#'              callbacks = list(cb.gblinear.history()))
+#' # coefficients in the CV fold #3
+#' xgb.gblinear.history(bst)[[3]] %>% matplot(type = 'l')
+#'
+#' 
+#' #### Multiclass classification:
+#' #
+#' dtrain <- xgb.DMatrix(scale(x), label = as.numeric(iris$Species) - 1)
+#' param <- list(booster = "gblinear", objective = "multi:softprob", num_class = 3,
+#'               lambda = 0.0003, alpha = 0.0003, nthread = 2)
+#' # For the default linear updater 'shotgun' it sometimes is helpful
+#' # to use smaller eta to reduce instability
+#' bst <- xgb.train(param, dtrain, list(tr=dtrain), nrounds = 70, eta = 0.5,
+#'                  callbacks = list(cb.gblinear.history()))
+#' # Will plot the coefficient paths separately for each class:
+#' xgb.gblinear.history(bst, class_index = 0) %>% matplot(type = 'l')
+#' xgb.gblinear.history(bst, class_index = 1) %>% matplot(type = 'l')
+#' xgb.gblinear.history(bst, class_index = 2) %>% matplot(type = 'l')
+#'
+#' # CV:
+#' bst <- xgb.cv(param, dtrain, nfold = 5, nrounds = 70, eta = 0.5,
+#'               callbacks = list(cb.gblinear.history(FALSE)))
+#' # 1st forld of 1st class
+#' xgb.gblinear.history(bst, class_index = 0)[[1]] %>% matplot(type = 'l')
+#'
+#' @export
+cb.gblinear.history <- function(sparse=FALSE) {
+  coefs <- NULL
+
+  init <- function(env) {
+    if (!is.null(env$bst)) { # xgb.train:
+      coef_path <- list()
+    } else if (!is.null(env$bst_folds)) { # xgb.cv:
+      coef_path <- rep(list(), length(env$bst_folds))
+    } else stop("Parent frame has neither 'bst' nor 'bst_folds'")
+  }
+
+  # convert from list to (sparse) matrix
+  list2mat <- function(coef_list) {
+    if (sparse) {
+      coef_mat <- sparseMatrix(x = unlist(lapply(coef_list, slot, "x")),
+                               i = unlist(lapply(coef_list, slot, "i")),
+                               p = c(0, cumsum(sapply(coef_list, function(x) length(x@x)))),
+                               dims = c(length(coef_list[[1]]), length(coef_list)))
+      return(t(coef_mat))
+    } else {
+      return(do.call(rbind, coef_list))
+    }
+  }
+
+  finalizer <- function(env) {
+    if (length(coefs) == 0)
+      return()
+    if (!is.null(env$bst)) { # # xgb.train:
+      coefs <<- list2mat(coefs)
+    } else { # xgb.cv:
+      # first lapply transposes the list
+      coefs <<- lapply(seq_along(coefs[[1]]), function(i) lapply(coefs, "[[", i)) %>%
+                lapply(function(x) list2mat(x))
+    }
+  }
+
+  extract.coef <- function(env) {
+    if (!is.null(env$bst)) { # # xgb.train:
+      cf <- as.numeric(grep('(booster|bias|weigh)', xgb.dump(env$bst), invert = TRUE, value = TRUE))
+      if (sparse) cf <- as(cf, "sparseVector")
+    } else { # xgb.cv:
+      cf <- vector("list", length(env$bst_folds))
+      for (i in seq_along(env$bst_folds)) {
+        dmp <- xgb.dump(xgb.handleToBooster(env$bst_folds[[i]]$bst))
+        cf[[i]] <- as.numeric(grep('(booster|bias|weigh)', dmp, invert = TRUE, value = TRUE))
+        if (sparse) cf[[i]] <- as(cf[[i]], "sparseVector")
+      }
+    }
+    cf
+  }
+
+  callback <- function(env = parent.frame(), finalize = FALSE) {
+    if (is.null(coefs)) init(env)
+    if (finalize) return(finalizer(env))
+    cf <- extract.coef(env)
+    coefs <<- c(coefs, list(cf))
+  }
+
+  attr(callback, 'call') <- match.call()
+  attr(callback, 'name') <- 'cb.gblinear.history'
+  callback
+}
+
+#' Extract gblinear coefficients history.
+#'
+#' A helper function to extract the matrix of linear coefficients' history
+#' from a gblinear model created while using the \code{cb.gblinear.history()}
+#' callback.
+#'
+#' @param model either an \code{xgb.Booster} or a result of \code{xgb.cv()}, trained
+#'        using the \code{cb.gblinear.history()} callback.
+#' @param class_index zero-based class index to extract the coefficients for only that
+#'        specific class in a multinomial multiclass model. When it is NULL, all the
+#'        coeffients are returned. Has no effect in non-multiclass models.
+#'
+#' @return 
+#' For an \code{xgb.train} result, a matrix (either dense or sparse) with the columns
+#' corresponding to iteration's coefficients (in the order as \code{xgb.dump()} would
+#' return) and the rows corresponding to boosting iterations.
+#'
+#' For an \code{xgb.cv} result, a list of such matrices is returned with the elements
+#' corresponding to CV folds.
+#'
+#' @export
+xgb.gblinear.history <- function(model, class_index = NULL) {
+
+  if (!(inherits(model, "xgb.Booster") ||
+        inherits(model, "xgb.cv.synchronous")))
+    stop("model must be an object of either xgb.Booster or xgb.cv.synchronous class")
+  is_cv <- inherits(model, "xgb.cv.synchronous")
+
+  if (is.null(model[["callbacks"]]) || is.null(model$callbacks[["cb.gblinear.history"]]))
+    stop("model must be trained while using the cb.gblinear.history() callback")
+
+  if (!is_cv) {
+    # extract num_class & num_feat from the internal model
+    dmp <- xgb.dump(model)
+    if(length(dmp) < 2 || dmp[2] != "bias:")
+      stop("It does not appear to be a gblinear model")
+    dmp <- dmp[-c(1,2)]
+    n <- which(dmp == 'weight:')
+    if(length(n) != 1)
+      stop("It does not appear to be a gblinear model")
+    num_class <- n - 1
+    num_feat <- (length(dmp) - 4) / num_class
+  } else {
+    # in case of CV, the object is expected to have this info
+    if (model$params$booster != "gblinear")
+      stop("It does not appear to be a gblinear model")
+    num_class <- NVL(model$params$num_class, 1)
+    num_feat <- model$nfeatures
+    if (is.null(num_feat))
+      stop("This xgb.cv result does not have nfeatures info")
+  }
+
+  if (!is.null(class_index) &&
+      num_class > 1 &&
+      (class_index[1] < 0 || class_index[1] >= num_class))
+    stop("class_index has to be within [0,", num_class - 1, "]")
+
+  coef_path <- environment(model$callbacks$cb.gblinear.history)[["coefs"]]
+  if (!is.null(class_index) && num_class > 1) {
+    coef_path <- if (is.list(coef_path)) {
+      lapply(coef_path, 
+             function(x) x[, seq(1 + class_index, by=num_class, length.out=num_feat)])
+    } else {
+      coef_path <- coef_path[, seq(1 + class_index, by=num_class, length.out=num_feat)]
+    }
+  }
+  coef_path
+}
+
+
 #
 # Internal utility functions for callbacks ------------------------------------
 # 
 
 # Format the evaluation metric string
-format.eval.string <- function(iter, eval_res, eval_err=NULL) {
+format.eval.string <- function(iter, eval_res, eval_err = NULL) {
   if (length(eval_res) == 0)
     stop('no evaluation results')
   enames <- names(eval_res)
@@ -537,9 +756,9 @@ format.eval.string <- function(iter, eval_res, eval_err=NULL) {
   if (!is.null(eval_err)) {
     if (length(eval_res) != length(eval_err))
       stop('eval_res & eval_err lengths mismatch')
-    res <- paste0(sprintf("%s:%f+%f", enames, eval_res, eval_err), collapse='\t')
+    res <- paste0(sprintf("%s:%f+%f", enames, eval_res, eval_err), collapse = '\t')
   } else {
-    res <- paste0(sprintf("%s:%f", enames, eval_res), collapse='\t')
+    res <- paste0(sprintf("%s:%f", enames, eval_res), collapse = '\t')
   }
   return(paste0(iter, res))
 }
@@ -595,7 +814,7 @@ has.callbacks <- function(cb_list, query_names) {
     return(FALSE)
   if (!is.list(cb_list) ||
       any(sapply(cb_list, class) != 'function')) {
-    stop('`cb_list`` must be a list of callback functions')
+    stop('`cb_list` must be a list of callback functions')
   }
   cb_names <- callback.names(cb_list)
   if (!is.character(cb_names) ||

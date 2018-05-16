@@ -11,6 +11,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include "avx_helpers.h"
 
 namespace xgboost {
 namespace common {
@@ -19,8 +20,12 @@ namespace common {
  * \param x input parameter
  * \return the transformed value.
  */
-inline float Sigmoid(float x) {
-  return 1.0f / (1.0f + std::exp(-x));
+XGBOOST_DEVICE inline float Sigmoid(float x) {
+  return 1.0f / (1.0f + expf(-x));
+}
+
+inline avx::Float8 Sigmoid(avx::Float8 x) {
+  return avx::Sigmoid(x);
 }
 
 /*!
@@ -34,12 +39,12 @@ inline void Softmax(std::vector<float>* p_rec) {
     wmax = std::max(rec[i], wmax);
   }
   double wsum = 0.0f;
-  for (size_t i = 0; i < rec.size(); ++i) {
-    rec[i] = std::exp(rec[i] - wmax);
-    wsum += rec[i];
+  for (float & elem : rec) {
+    elem = std::exp(elem - wmax);
+    wsum += elem;
   }
-  for (size_t i = 0; i < rec.size(); ++i) {
-    rec[i] /= static_cast<float>(wsum);
+  for (float & elem : rec) {
+    elem /= static_cast<float>(wsum);
   }
 }
 
