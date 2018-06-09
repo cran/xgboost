@@ -391,7 +391,7 @@ test &lt;-<span class="st"> </span>agaricus.test
 
 <span class="co">#Random Forest™ - 1000 trees</span>
 bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train$data, <span class="dt">label =</span> train$label, <span class="dt">max_depth =</span> <span class="dv">4</span>, <span class="dt">num_parallel_tree =</span> <span class="dv">1000</span>, <span class="dt">subsample =</span> <span class="fl">0.5</span>, <span class="dt">colsample_bytree =</span><span class="fl">0.5</span>, <span class="dt">nrounds =</span> <span class="dv">1</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</code></pre></div>
-<pre><code>## [1]  train-error:0.002150</code></pre>
+<pre><code>## [1]  train-error:0.003531</code></pre>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="co">#Boosting - 3 rounds</span>
 bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train$data, <span class="dt">label =</span> train$label, <span class="dt">max_depth =</span> <span class="dv">4</span>, <span class="dt">nrounds =</span> <span class="dv">3</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</code></pre></div>
 <pre><code>## [1]  train-error:0.006142 

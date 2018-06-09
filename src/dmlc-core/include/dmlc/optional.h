@@ -7,10 +7,12 @@
 #define DMLC_OPTIONAL_H_
 
 #include <iostream>
+#include <string>
 #include <utility>
 #include <algorithm>
 
 #include "./base.h"
+#include "./common.h"
 #include "./logging.h"
 #include "./type_traits.h"
 
@@ -96,6 +98,11 @@ class optional {
   const T& operator*() const {
     return *reinterpret_cast<const T*>(&val);
   }
+  /*! \brief equal comparison */
+  bool operator==(const optional<T>& other) const {
+    return this->is_none == other.is_none &&
+           (this->is_none == true || this->value() == other.value());
+  }
   /*! \brief return the holded value.
    *         throws std::logic_error if holding no value
    */
@@ -107,6 +114,8 @@ class optional {
   }
   /*! \brief whether this object is holding a value */
   explicit operator bool() const { return !is_none; }
+  /*! \brief whether this object is holding a value (alternate form). */
+  bool has_value() const { return operator bool(); }
 
  private:
   // whether this is none
@@ -173,10 +182,80 @@ std::istream &operator>>(std::istream &is, optional<T> &t) {
   }
   return is;
 }
+/*! \brief specialization of '>>' istream parsing for optional<bool>
+ *
+ * Permits use of generic parameter FieldEntry<DType> class to create
+ * FieldEntry<optional<bool>> without explicit specialization.
+ *
+ *  \code
+ *    dmlc::optional<bool> x;
+ *    std::string s1 = "true";
+ *    std::istringstream is1(s1);
+ *    s1 >> x;  // x == optional<bool>(true)
+ *
+ *    std::string s2 = "None";
+ *    std::istringstream is2(s2);
+ *    s2 >> x;  // x == optional<bool>()
+ *  \endcode
+ *
+ *  \param is input stream
+ *  \param t target optional<bool> object
+ *  \return input stream
+ */
+inline std::istream &operator>>(std::istream &is, optional<bool> &t) {
+  // Discard initial whitespace
+  while (isspace(is.peek()))
+    is.get();
+  // Extract chars that might be valid into a separate string, stopping
+  // on whitespace or other non-alphanumerics such as ",)]".
+  std::string s;
+  while (isalnum(is.peek()))
+    s.push_back(is.get());
+
+  if (!is.fail()) {
+    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+    if (s == "1" || s == "true")
+      t = true;
+    else if (s == "0" || s == "false")
+      t = false;
+    else if (s == "none")
+      t = nullopt;
+    else
+      is.setstate(std::ios::failbit);
+  }
+
+  return is;
+}
 
 /*! \brief description for optional int */
 DMLC_DECLARE_TYPE_NAME(optional<int>, "int or None");
+/*! \brief description for optional bool */
+DMLC_DECLARE_TYPE_NAME(optional<bool>, "boolean or None");
+/*! \brief description for optional float */
+DMLC_DECLARE_TYPE_NAME(optional<float>, "float or None");
+/*! \brief description for optional double */
+DMLC_DECLARE_TYPE_NAME(optional<double>, "double or None");
 
 }  // namespace dmlc
+
+namespace std {
+/*! \brief std hash function for optional */
+template<typename T>
+struct hash<dmlc::optional<T> > {
+  /*!
+   * \brief returns hash of the optional value.
+   * \param val value.
+   * \return hash code.
+   */
+  size_t operator()(const dmlc::optional<T>& val) const {
+    std::hash<bool> hash_bool;
+    size_t res = hash_bool(val.has_value());
+    if (val.has_value()) {
+      res = dmlc::HashCombine(res, val.value());
+    }
+    return res;
+  }
+};
+}  // namespace std
 
 #endif  // DMLC_OPTIONAL_H_

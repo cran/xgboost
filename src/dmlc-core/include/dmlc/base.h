@@ -26,7 +26,7 @@
  * This can help identify the error that cannot be catched.
  */
 #ifndef DMLC_LOG_BEFORE_THROW
-#define DMLC_LOG_BEFORE_THROW 1
+#define DMLC_LOG_BEFORE_THROW 0
 #endif
 
 /*!
@@ -38,11 +38,18 @@
 #endif
 
 /*!
- * \brief Wheter to print stack trace for fatal error,
+ * \brief Whether to print stack trace for fatal error,
  * enabled on linux when using gcc.
  */
-#if (!defined(DMLC_LOG_STACK_TRACE) && defined(__GNUC__) && !defined(__MINGW32__))
+#if (defined(__GNUC__) && !defined(__MINGW32__)\
+     && !defined(__sun) && !defined(__SVR4)\
+     && !(defined __MINGW64__) && !(defined __ANDROID__))
+#if (!defined(DMLC_LOG_STACK_TRACE))
 #define DMLC_LOG_STACK_TRACE 1
+#endif
+#if (!defined(DMLC_LOG_STACK_TRACE_SIZE))
+#define DMLC_LOG_STACK_TRACE_SIZE 10
+#endif
 #endif
 
 /*! \brief whether compile with hdfs support */
@@ -81,11 +88,9 @@
 /*! \brief Whether cxx11 thread local is supported */
 #ifndef DMLC_CXX11_THREAD_LOCAL
 #if defined(_MSC_VER)
-#if (_MSC_VER >= 1900)
-#define DMLC_CXX11_THREAD_LOCAL 1
-#else
-#define DMLC_CXX11_THREAD_LOCAL 0
-#endif
+#define DMLC_CXX11_THREAD_LOCAL (_MSC_VER >= 1900)
+#elif defined(__clang__)
+#define DMLC_CXX11_THREAD_LOCAL (__has_feature(cxx_thread_local))
 #else
 #define DMLC_CXX11_THREAD_LOCAL (__cplusplus >= 201103L)
 #endif
@@ -95,6 +100,11 @@
 /*! \brief whether RTTI is enabled */
 #ifndef DMLC_ENABLE_RTTI
 #define DMLC_ENABLE_RTTI 1
+#endif
+
+/*! \brief whether use fopen64 */
+#ifndef DMLC_USE_FOPEN64
+#define DMLC_USE_FOPEN64 1
 #endif
 
 /// check if g++ is before 4.6
@@ -155,15 +165,18 @@
 #  endif
 #endif
 
-///
-/// code block to handle optionally loading
-///
-#if !defined(__GNUC__)
+#if DMLC_USE_FOPEN64 && \
+  (!defined(__GNUC__) || (defined __ANDROID__) || ((defined __MINGW32__) && !(defined __MINGW64__)))
 #define fopen64 std::fopen
 #endif
-#if (defined __MINGW32__) && !(defined __MINGW64__)
-#define fopen64 std::fopen
+
+#ifdef __APPLE__
+#  define off64_t off_t
+#  if DMLC_USE_FOPEN64
+#    define fopen64 std::fopen
+#  endif
 #endif
+
 #ifdef _MSC_VER
 #if _MSC_VER < 1900
 // NOTE: sprintf_s is not equivalent to snprintf,
@@ -178,10 +191,6 @@
 #endif
 #endif
 
-#ifdef __APPLE__
-#define off64_t off_t
-#define fopen64 std::fopen
-#endif
 
 extern "C" {
 #include <sys/types.h>

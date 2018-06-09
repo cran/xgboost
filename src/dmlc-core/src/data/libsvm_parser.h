@@ -19,7 +19,7 @@ namespace data {
  * \brief Text parser that parses the input lines
  * and returns rows in input data
  */
-template <typename IndexType>
+template <typename IndexType, typename DType = real_t>
 class LibSVMParser : public TextParserBase<IndexType> {
  public:
   explicit LibSVMParser(InputSplit *source,
@@ -27,19 +27,19 @@ class LibSVMParser : public TextParserBase<IndexType> {
       : TextParserBase<IndexType>(source, nthread) {}
 
  protected:
-  virtual void ParseBlock(char *begin,
-                          char *end,
-                          RowBlockContainer<IndexType> *out);
+  virtual void ParseBlock(const char *begin,
+                          const char *end,
+                          RowBlockContainer<IndexType, DType> *out);
 };
 
-template <typename IndexType>
-void LibSVMParser<IndexType>::
-ParseBlock(char *begin,
-           char *end,
-           RowBlockContainer<IndexType> *out) {
+template <typename IndexType, typename DType>
+void LibSVMParser<IndexType, DType>::
+ParseBlock(const char *begin,
+           const char *end,
+           RowBlockContainer<IndexType, DType> *out) {
   out->Clear();
-  char * lbegin = begin;
-  char * lend = lbegin;
+  const char * lbegin = begin;
+  const char * lend = lbegin;
   while (lbegin != end) {
     // get line end
     lend = lbegin + 1;
@@ -63,8 +63,17 @@ ParseBlock(char *begin,
       out->offset.push_back(out->index.size());
     }
     out->label.push_back(label);
-    // parse feature[:value]
+    // parse qid:id
+    uint64_t qid;
     p = q;
+    while (p != end && *p == ' ') ++p;
+    if (p != lend && (strncmp(p, "qid:", 4) == 0))  {
+      p += 4;
+      qid = atoll(p);
+      out->qid.push_back(qid);
+      p = q;
+    }
+    // parse feature[:value]
     while (p != lend) {
       IndexType featureId;
       real_t value;

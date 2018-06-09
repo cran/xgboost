@@ -40,48 +40,62 @@ struct CSVParserParam : public Parameter<CSVParserParam> {
  *
  *  This should be extended in future to accept arguments of column types.
  */
-template <typename IndexType>
-class CSVParser : public TextParserBase<IndexType> {
+template <typename IndexType, typename DType = real_t>
+class CSVParser : public TextParserBase<IndexType, DType> {
  public:
   explicit CSVParser(InputSplit *source,
                      const std::map<std::string, std::string>& args,
                      int nthread)
-      : TextParserBase<IndexType>(source, nthread) {
+      : TextParserBase<IndexType, DType>(source, nthread) {
     param_.Init(args);
     CHECK_EQ(param_.format, "csv");
   }
 
  protected:
-  virtual void ParseBlock(char *begin,
-                          char *end,
-                          RowBlockContainer<IndexType> *out);
+  virtual void ParseBlock(const char *begin,
+                          const char *end,
+                          RowBlockContainer<IndexType, DType> *out);
 
  private:
   CSVParserParam param_;
 };
 
-template <typename IndexType>
-void CSVParser<IndexType>::
-ParseBlock(char *begin,
-           char *end,
-           RowBlockContainer<IndexType> *out) {
+template <typename IndexType, typename DType>
+void CSVParser<IndexType, DType>::
+ParseBlock(const char *begin,
+           const char *end,
+           RowBlockContainer<IndexType, DType> *out) {
   out->Clear();
-  char * lbegin = begin;
-  char * lend = lbegin;
+  const char * lbegin = begin;
+  const char * lend = lbegin;
+  // advance lbegin if it points to newlines
+  while ((lbegin != end) && (*lbegin == '\n' || *lbegin == '\r')) ++lbegin;
   while (lbegin != end) {
     // get line end
+    this->IgnoreUTF8BOM(&lbegin, &end);
     lend = lbegin + 1;
     while (lend != end && *lend != '\n' && *lend != '\r') ++lend;
 
-    char* p = lbegin;
+    const char* p = lbegin;
     int column_index = 0;
     IndexType idx = 0;
-    float label = 0.0f;
+    DType label = DType(0.0f);
 
     while (p != lend) {
       char *endptr;
-      float v = strtof(p, &endptr);
-      p = endptr;
+      DType v;
+      // if DType is float32
+      if (std::is_same<DType, real_t>::value) {
+        v = strtof(p, &endptr);
+      // If DType is int32
+      } else if (std::is_same<DType, int>::value) {
+        v = static_cast<int>(strtol(p, &endptr, 0));
+      // If DType is all other types
+      } else {
+        LOG(FATAL) << "Only float32 and int32 are supported for the time being";
+      }
+      p = (endptr >= lend) ? lend : endptr;
+
       if (column_index == param_.label_column) {
         label = v;
       } else {

@@ -248,9 +248,9 @@ bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="d
 ## [2]  train-error:0.022263</code></pre>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="co"># verbose = 2, also print information about tree</span>
 bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> dtrain, <span class="dt">max_depth =</span> <span class="dv">2</span>, <span class="dt">eta =</span> <span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds =</span> <span class="dv">2</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>, <span class="dt">verbose =</span> <span class="dv">2</span>)</code></pre></div>
-<pre><code>## [23:02:35] amalgamation/../src/tree/updater_prune.cc:74: tree pruning end, 1 roots, 6 extra nodes, 0 pruned nodes, max_depth=2
+<pre><code>## [21:49:45] amalgamation/../src/tree/updater_prune.cc:74: tree pruning end, 1 roots, 6 extra nodes, 0 pruned nodes, max_depth=2
 ## [1]  train-error:0.046522 
-## [23:02:35] amalgamation/../src/tree/updater_prune.cc:74: tree pruning end, 1 roots, 4 extra nodes, 0 pruned nodes, max_depth=2
+## [21:49:45] amalgamation/../src/tree/updater_prune.cc:74: tree pruning end, 1 roots, 4 extra nodes, 0 pruned nodes, max_depth=2
 ## [2]  train-error:0.022263</code></pre>
 </div>
 </div>
@@ -338,8 +338,8 @@ bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class=
 <h3><span class="header-section-number">1.8.3</span> Linear boosting</h3>
 <p>Until now, all the learnings we have performed were based on boosting trees. <strong>XGBoost</strong> implements a second algorithm, based on linear boosting. The only difference with previous command is <code>booster = &quot;gblinear&quot;</code> parameter (and removing <code>eta</code> parameter).</p>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain, <span class="dt">booster =</span> <span class="st">&quot;gblinear&quot;</span>, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">eval_metric =</span> <span class="st">&quot;error&quot;</span>, <span class="dt">eval_metric =</span> <span class="st">&quot;logloss&quot;</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</code></pre></div>
-<pre><code>## [1]  train-error:0.011362    train-logloss:0.190874  test-error:0.013656 test-logloss:0.195149 
-## [2]  train-error:0.002917    train-logloss:0.083268  test-error:0.002483 test-logloss:0.085888</code></pre>
+<pre><code>## [1]  train-error:0.012437    train-logloss:0.190236  test-error:0.014898 test-logloss:0.194405 
+## [2]  train-error:0.002764    train-logloss:0.082970  test-error:0.002483 test-logloss:0.085625</code></pre>
 <p>In this specific case, <em>linear boosting</em> gets sligtly better performance metrics than decision trees based algorithm.</p>
 <p>In simple cases, it will happen because there is nothing better than a linear algorithm to catch a linear link. However, decision trees are much better to catch a non linear link between predictors and outcome. Because there is no silver bullet, we advise you to check both algorithms with your own datasets to have an idea of what to use.</p>
 </div>
@@ -352,7 +352,7 @@ bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class=
 <pre><code>## [1] TRUE</code></pre>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="co"># to load it in, simply call xgb.DMatrix</span>
 dtrain2 &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(<span class="st">&quot;dtrain.buffer&quot;</span>)</code></pre></div>
-<pre><code>## [23:02:35] 6513x126 matrix with 143286 entries loaded from dtrain.buffer</code></pre>
+<pre><code>## [21:49:45] 6513x126 matrix with 143286 entries loaded from dtrain.buffer</code></pre>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain2, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">eta=</span><span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</code></pre></div>
 <pre><code>## [1]  train-error:0.046522    test-error:0.042831 
 ## [2]  train-error:0.022263    test-error:0.021726</code></pre>

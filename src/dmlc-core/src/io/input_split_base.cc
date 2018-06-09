@@ -12,10 +12,11 @@ namespace dmlc {
 namespace io {
 void InputSplitBase::Init(FileSystem *filesys,
                           const char *uri,
-                          size_t align_bytes) {
+                          size_t align_bytes,
+                          const bool recurse_directories) {
   this->filesys_ = filesys;
   // initialize the path
-  this->InitInputFileInfo(uri);
+  this->InitInputFileInfo(uri, recurse_directories);
   file_offset_.resize(files_.size() + 1);
   file_offset_[0] = 0;
   for (size_t i = 0; i < files_.size(); ++i) {
@@ -92,7 +93,7 @@ std::string InputSplitBase::StripEnd(std::string str, char ch) {
   return str;
 }
 
-void InputSplitBase::InitInputFileInfo(const std::string& uri) {
+std::vector<URI> InputSplitBase::ConvertToURIs(const std::string& uri) {
   // split by :
   const char dlm = ';';
   std::vector<std::string> file_list = Split(uri, dlm);
@@ -142,13 +143,22 @@ void InputSplitBase::InitInputFileInfo(const std::string& uri) {
 #endif  // DMLC_USE_REGEX
     }
   }
+  return expanded_list;
+}
 
+void InputSplitBase::InitInputFileInfo(const std::string& uri,
+                                       const bool recurse_directories) {
+  std::vector<URI> expanded_list = this->ConvertToURIs(uri);
   for (size_t i = 0; i < expanded_list.size(); ++i) {
     const URI& path = expanded_list[i];
     FileInfo info = filesys_->GetPathInfo(path);
     if (info.type == kDirectory) {
       std::vector<FileInfo> dfiles;
-      filesys_->ListDirectory(info.path, &dfiles);
+      if (!recurse_directories) {
+        filesys_->ListDirectory(info.path, &dfiles);
+      } else {
+        filesys_->ListDirectoryRecursive(info.path, &dfiles);
+      }
       for (size_t i = 0; i < dfiles.size(); ++i) {
         if (dfiles[i].size != 0 && dfiles[i].type == kFile) {
           files_.push_back(dfiles[i]);
@@ -161,13 +171,15 @@ void InputSplitBase::InitInputFileInfo(const std::string& uri) {
     }
   }
   CHECK_NE(files_.size(), 0U)
-      << "Cannot find any files that matches the URI patternz " << uri;
+      << "Cannot find any files that matches the URI pattern " << uri;
 }
 
 size_t InputSplitBase::Read(void *ptr, size_t size) {
   if (offset_begin_ >= offset_end_) return 0;
   if (offset_curr_ +  size > offset_end_) {
-    size = offset_end_ - offset_curr_;
+    // allow for extra newlines between files
+    const size_t num_extra_eol = files_.size() - file_ptr_ - 1;
+    size = offset_end_ - offset_curr_ + num_extra_eol;
   }
   if (size == 0) return 0;
   size_t nleft = size;
@@ -178,6 +190,7 @@ size_t InputSplitBase::Read(void *ptr, size_t size) {
     offset_curr_ += n;
     if (nleft == 0) break;
     if (n == 0) {
+      buf[0] = '\n'; ++buf; --nleft;  // insert a newline between files
       if (offset_curr_ != file_offset_[file_ptr_ + 1]) {
         LOG(ERROR) << "curr=" << offset_curr_
                    << ",begin=" << offset_begin_
@@ -229,12 +242,10 @@ bool InputSplitBase::ReadChunk(void *buf, size_t *size) {
 }
 
 bool InputSplitBase::Chunk::Load(InputSplitBase *split, size_t buffer_size) {
-  if (buffer_size + 1 > data.size()) {
-    data.resize(buffer_size + 1);
-  }
+  data.resize(buffer_size + 1);
   while (true) {
     // leave one tail chunk
-    size_t size = (data.size() - 1) * sizeof(size_t);
+    size_t size = (data.size() - 1) * sizeof(uint32_t);
     // set back to 0 for string safety
     data.back() = 0;
     if (!split->ReadChunk(BeginPtr(data), &size)) return false;
@@ -243,6 +254,27 @@ bool InputSplitBase::Chunk::Load(InputSplitBase *split, size_t buffer_size) {
     } else {
       begin = reinterpret_cast<char *>(BeginPtr(data));
       end = begin + size;
+      break;
+    }
+  }
+  return true;
+}
+
+bool InputSplitBase::Chunk::Append(InputSplitBase *split, size_t buffer_size) {
+  size_t previous_size = end - begin;
+  data.resize(data.size() + buffer_size);
+  while (true) {
+    // leave one tail chunk
+    size_t size = buffer_size * sizeof(uint32_t);
+    // set back to 0 for string safety
+    data.back() = 0;
+    if (!split->ReadChunk(reinterpret_cast<char *>(BeginPtr(data)) + previous_size, &size))
+      return false;
+    if (size == 0) {
+      data.resize(data.size() * 2);
+    } else {
+      begin = reinterpret_cast<char *>(BeginPtr(data));
+      end = begin + previous_size + size;
       break;
     }
   }

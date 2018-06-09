@@ -108,7 +108,7 @@ class any {
    */
   inline bool empty() const;
   /*!
-   * \return clear the content of container
+   * \brief clear the content of container
    */
   inline void clear();
   /*!
@@ -120,6 +120,9 @@ class any {
    * \return The type_info about the stored type.
    */
   inline const std::type_info& type() const;
+  /*! \brief Construct value of type T inplace */
+  template<typename T, typename... Args>
+  inline void construct(Args&&... args);
 
  private:
   //! \cond Doxygen_Suppress
@@ -182,7 +185,12 @@ inline any::any(T&& other) {
                   "Any can only hold value that is copy constructable");
     type_ = TypeInfo<DT>::get_type();
     if (data_on_stack<DT>::value) {
+
+#if 6 <= __GNUC__
+
+#endif
       new (&(data_.stack)) DT(std::forward<T>(other));
+
     } else {
       data_.pheap = new DT(std::forward<T>(other));
     }
@@ -207,6 +215,23 @@ inline void any::construct(const any& other) {
   type_ = other.type_;
   if (type_ != nullptr) {
     type_->create_from_data(&data_, other.data_);
+  }
+}
+
+template<typename T, typename... Args>
+inline void any::construct(Args&&... args) {
+  clear();
+  typedef typename std::decay<T>::type DT;
+  type_ = TypeInfo<DT>::get_type();
+  if (data_on_stack<DT>::value) {
+
+#if 6 <= __GNUC__
+
+#endif
+    new (&(data_.stack)) DT(std::forward<Args>(args)...);
+
+  } else {
+    data_.pheap = new DT(std::forward<Args>(args)...);
   }
 }
 
@@ -261,7 +286,7 @@ inline void any::check_type() const {
   CHECK(type_ != nullptr)
       << "The any container is empty"
       << " requested=" << typeid(T).name();
-  CHECK(type_->ptype_info == &typeid(T))
+  CHECK(*(type_->ptype_info) == typeid(T))
       << "The stored type mismatch"
       << " stored=" << type_->ptype_info->name()
       << " requested=" << typeid(T).name();
@@ -330,7 +355,7 @@ class any::TypeInfo
   Type type_;
   // constructor
   TypeInfo() {
-    if (std::is_pod<T>::value) {
+    if (std::is_pod<T>::value && data_on_stack<T>::value) {
       type_.destroy = nullptr;
     } else {
       type_.destroy = TypeInfo<T>::destroy;
