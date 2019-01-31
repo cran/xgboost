@@ -20,6 +20,7 @@
 #include "../src/objective/regression_obj.cc"
 #include "../src/objective/multiclass_obj.cc"
 #include "../src/objective/rank_obj.cc"
+#include "../src/objective/hinge.cc"
 
 // gbms
 #include "../src/gbm/gbm.cc"
@@ -43,10 +44,11 @@
 #endif
 
 // tress
+#include "../src/tree/split_evaluator.cc"
 #include "../src/tree/tree_model.cc"
 #include "../src/tree/tree_updater.cc"
 #include "../src/tree/updater_colmaker.cc"
-#include "../src/tree/updater_fast_hist.cc"
+#include "../src/tree/updater_quantile_hist.cc"
 #include "../src/tree/updater_prune.cc"
 #include "../src/tree/updater_refresh.cc"
 #include "../src/tree/updater_sync.cc"

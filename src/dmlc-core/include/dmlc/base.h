@@ -37,21 +37,6 @@
 #define DMLC_LOG_CUSTOMIZE 0
 #endif
 
-/*!
- * \brief Whether to print stack trace for fatal error,
- * enabled on linux when using gcc.
- */
-#if (defined(__GNUC__) && !defined(__MINGW32__)\
-     && !defined(__sun) && !defined(__SVR4)\
-     && !(defined __MINGW64__) && !(defined __ANDROID__))
-#if (!defined(DMLC_LOG_STACK_TRACE))
-#define DMLC_LOG_STACK_TRACE 1
-#endif
-#if (!defined(DMLC_LOG_STACK_TRACE_SIZE))
-#define DMLC_LOG_STACK_TRACE_SIZE 10
-#endif
-#endif
-
 /*! \brief whether compile with hdfs support */
 #ifndef DMLC_USE_HDFS
 #define DMLC_USE_HDFS 0
@@ -118,6 +103,13 @@
 #endif
 #endif
 
+/*!
+ * \brief Use little endian for binary serialization
+ *  if this is set to 0, use big endian.
+ */
+#ifndef DMLC_IO_USE_LITTLE_ENDIAN
+#define DMLC_IO_USE_LITTLE_ENDIAN 1
+#endif
 
 /*!
  * \brief Enable std::thread related modules,
@@ -165,16 +157,8 @@
 #  endif
 #endif
 
-#if DMLC_USE_FOPEN64 && \
-  (!defined(__GNUC__) || (defined __ANDROID__) || ((defined __MINGW32__) && !(defined __MINGW64__)))
-#define fopen64 std::fopen
-#endif
-
 #ifdef __APPLE__
 #  define off64_t off_t
-#  if DMLC_USE_FOPEN64
-#    define fopen64 std::fopen
-#  endif
 #endif
 
 #ifdef _MSC_VER
@@ -190,7 +174,6 @@
 #pragma message("Warning: FILE OFFSET BITS defined to be 32 bit")
 #endif
 #endif
-
 
 extern "C" {
 #include <sys/types.h>
@@ -280,5 +263,11 @@ inline const char* BeginPtr(const std::string &str) {
 #define constexpr const
 #define alignof __alignof
 #endif
+
+/* If fopen64 is not defined by current machine,
+   replace fopen64 with std::fopen. Also determine ability to print stack trace
+   for fatal error and define DMLC_LOG_STACK_TRACE if stack trace can be
+   produced. Always keep this #include at the bottom of dmlc/base.h */
+#include <dmlc/build_config.h>
 
 #endif  // DMLC_BASE_H_

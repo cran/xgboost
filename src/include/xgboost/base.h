@@ -69,7 +69,7 @@
 /*!
  * \brief Tag function as usable by device
  */
-#ifdef __NVCC__
+#if defined (__CUDA__) || defined(__NVCC__)
 #define XGBOOST_DEVICE __host__ __device__
 #else
 #define XGBOOST_DEVICE
@@ -218,4 +218,8 @@ using bst_omp_uint = dmlc::omp_uint;  // NOLINT
 #endif
 #endif
 }  // namespace xgboost
+
+/* Always keep this #include at the bottom of xgboost/base.h */
+#include <xgboost/build_config.h>
+
 #endif  // XGBOOST_BASE_H_

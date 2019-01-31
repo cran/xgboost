@@ -36,41 +36,16 @@ XGBOOST_DEVICE __forceinline__ double atomicAdd(double* address, double val) {
 namespace xgboost {
 namespace tree {
 
-// Atomic add function for double precision gradients
-__device__ __forceinline__ void AtomicAddGpair(GradientPairPrecise* dest,
-                                               const GradientPair& gpair) {
-  auto dst_ptr = reinterpret_cast<double*>(dest);
-
-  atomicAdd(dst_ptr, static_cast<double>(gpair.GetGrad()));
-  atomicAdd(dst_ptr + 1, static_cast<double>(gpair.GetHess()));
-}
-
-// For integer gradients
-__device__ __forceinline__ void AtomicAddGpair(GradientPairInteger* dest,
-                                               const GradientPair& gpair) {
-  auto dst_ptr = reinterpret_cast<unsigned long long int*>(dest);  // NOLINT
-  GradientPairInteger tmp(gpair.GetGrad(), gpair.GetHess());
-  auto src_ptr = reinterpret_cast<GradientPairInteger::ValueT*>(&tmp);
+// Atomic add function for gradients
+template <typename OutputGradientT, typename InputGradientT>
+DEV_INLINE void AtomicAddGpair(OutputGradientT* dest,
+                                               const InputGradientT& gpair) {
+  auto dst_ptr = reinterpret_cast<typename OutputGradientT::ValueT*>(dest);
 
   atomicAdd(dst_ptr,
-            static_cast<unsigned long long int>(*src_ptr));  // NOLINT
+            static_cast<typename OutputGradientT::ValueT>(gpair.GetGrad()));
   atomicAdd(dst_ptr + 1,
-            static_cast<unsigned long long int>(*(src_ptr + 1)));  // NOLINT
-}
-
-/**
- * \brief Check maximum gradient value is below 2^16. This is to prevent
- * overflow when using integer gradient summation.
- */
-
-inline void CheckGradientMax(const std::vector<GradientPair>& gpair) {
-  auto* ptr = reinterpret_cast<const float*>(gpair.data());
-  float abs_max =
-      std::accumulate(ptr, ptr + (gpair.size() * 2), 0.f,
-                      [=](float a, float b) { return max(abs(a), abs(b)); });
-
-  CHECK_LT(abs_max, std::pow(2.0f, 16.0f))
-      << "Labels are too large for this algorithm. Rescale to less than 2^16.";
+            static_cast<typename OutputGradientT::ValueT>(gpair.GetHess()));
 }
 
 struct GPUTrainingParam {
@@ -246,6 +221,7 @@ XGBOOST_DEVICE float inline LossChangeMissing(const GradientPairT& scan,
                                          const float& parent_gain,
                                          const GPUTrainingParam& param,
                                          bool& missing_left_out) {  // NOLINT
+  // Put gradients of missing values to left
   float missing_left_loss =
       DeviceCalcLossChange(param, scan + missing, parent_sum, parent_gain);
   float missing_right_loss =
@@ -320,13 +296,11 @@ inline void Dense2SparseTree(RegTree* p_tree,
   for (int gpu_nid = 0; gpu_nid < h_nodes.size(); gpu_nid++) {
     const DeviceNodeStats& n = h_nodes[gpu_nid];
     if (!n.IsUnused() && !n.IsLeaf()) {
-      tree.AddChilds(nid);
-      tree[nid].SetSplit(n.fidx, n.fvalue, n.dir == kLeftDir);
+      tree.ExpandNode(nid, n.fidx, n.fvalue, n.dir == kLeftDir, n.weight, 0.0f,
+                      0.0f, n.root_gain, n.sum_gradients.GetHess());
       tree.Stat(nid).loss_chg = n.root_gain;
       tree.Stat(nid).base_weight = n.weight;
       tree.Stat(nid).sum_hess = n.sum_gradients.GetHess();
-      tree[tree[nid].LeftChild()].SetLeaf(0);
-      tree[tree[nid].RightChild()].SetLeaf(0);
       nid++;
     } else if (n.IsLeaf()) {
       tree[nid].SetLeaf(n.weight * param.learning_rate);
@@ -374,81 +348,6 @@ inline void SubsampleGradientPair(dh::DVec<GradientPair>* p_gpair, float subsamp
     }
   });
 }
-
-inline std::vector<int> ColSample(std::vector<int> features, float colsample) {
-  CHECK_GT(features.size(), 0);
-  int n = std::max(1, static_cast<int>(colsample * features.size()));
-
-  std::shuffle(features.begin(), features.end(), common::GlobalRandom());
-  features.resize(n);
-  std::sort(features.begin(), features.end());
-
-  return features;
-}
-
-/**
- * \class ColumnSampler
- *
- * \brief Handles selection of columns due to colsample_bytree and
- * colsample_bylevel parameters. Should be initialised the before tree
- * construction and to reset When tree construction is completed.
- */
-
-class ColumnSampler {
-  std::vector<int> feature_set_tree_;
-  std::map<int, std::vector<int>> feature_set_level_;
-  TrainParam param_;
-
- public:
-  /**
-   * \fn  void Init(int64_t num_col, const TrainParam& param)
-   *
-   * \brief Initialise this object before use.
-   *
-   * \param num_col Number of cols.
-   * \param param   The parameter.
-   */
-
-  void Init(int64_t num_col, const TrainParam& param) {
-    this->Reset();
-    this->param_ = param;
-    feature_set_tree_.resize(num_col);
-    std::iota(feature_set_tree_.begin(), feature_set_tree_.end(), 0);
-    feature_set_tree_ = ColSample(feature_set_tree_, param.colsample_bytree);
-  }
-
-  /**
-   * \fn  void Reset()
-   *
-   * \brief Resets this object.
-   */
-
-  void Reset() {
-    feature_set_tree_.clear();
-    feature_set_level_.clear();
-  }
-
-  /**
-   * \fn  bool ColumnUsed(int column, int depth)
-   *
-   * \brief Whether the current column should be considered as a split.
-   *
-   * \param column  The column index.
-   * \param depth   The current tree depth.
-   *
-   * \return  True if it should be used, false if it should not be used.
-   */
-
-  bool ColumnUsed(int column, int depth) {
-    if (feature_set_level_.count(depth) == 0) {
-      feature_set_level_[depth] =
-          ColSample(feature_set_tree_, param_.colsample_bylevel);
-    }
-
-    return std::binary_search(feature_set_level_[depth].begin(),
-                              feature_set_level_[depth].end(), column);
-  }
-};
 
 }  // namespace tree
 }  // namespace xgboost

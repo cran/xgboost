@@ -11,6 +11,7 @@
 #define RABIT_EXTERN_C extern "C"
 #include <cstdio>
 #else
+#define RABIT_EXTERN_C
 #include <stdio.h>
 #endif
 
@@ -38,16 +39,25 @@ RABIT_DLL void RabitInit(int argc, char *argv[]);
  * \brief finalize the rabit engine,
  * call this function after you finished all jobs.
  */
-RABIT_DLL void RabitFinalize();
+RABIT_DLL void RabitFinalize(void);
 
-/*! \brief get rank of current process */
-RABIT_DLL int RabitGetRank();
+/*!
+ * \brief get rank of current process
+ * \return rank number of worker
+ * */
+RABIT_DLL int RabitGetRank(void);
 
-/*! \brief get total number of process */
-RABIT_DLL int RabitGetWorldSize();
+/*!
+ * \brief get total number of process
+ * \return total world size
+ * */
+RABIT_DLL int RabitGetWorldSize(void);
 
-/*! \brief get rank of current process */
-RABIT_DLL int RabitIsDistributed();
+/*!
+ * \brief get rank of current process
+ * \return if rabit is distributed
+ * */
+RABIT_DLL int RabitIsDistributed(void);
 
 /*!
  * \brief print the msg to the tracker,
@@ -93,11 +103,14 @@ RABIT_DLL void RabitBroadcast(void *sendrecv_data,
  *                     If the result of Allreduce can be recovered directly, then prepare_func will NOT be called
    * \param prepare_arg argument used to passed into the lazy preprocessing function
    */
+
+RABIT_EXTERN_C typedef void (*C_PREPARE_FUN)(void *arg);
+
 RABIT_DLL void RabitAllreduce(void *sendrecvbuf,
                               size_t count,
                               int enum_dtype,
                               int enum_op,
-                              void (*prepare_fun)(void *arg),
+                              C_PREPARE_FUN prepare_fun,
                               void *prepare_arg);
 
 /*!
@@ -135,19 +148,20 @@ RABIT_DLL void RabitCheckPoint(const char *global_model,
 /*!
  * \return version number of current stored model,
  * which means how many calls to CheckPoint we made so far
+ * \return rabit version number
  */
-RABIT_DLL int RabitVersionNumber();
+RABIT_DLL int RabitVersionNumber(void);
 
 
 /*!
  * \brief a Dummy function,
  *  used to cause force link of C API  into the  DLL.
  * \code
- * // force link rabit C API library.
+ * \/\/force link rabit C API library.
  * static int must_link_rabit_ = RabitLinkTag();
  * \endcode
  * \return a dummy integer.
  */
-RABIT_DLL int RabitLinkTag();
+RABIT_DLL int RabitLinkTag(void);
 
 #endif  // RABIT_C_API_H_

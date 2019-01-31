@@ -4,9 +4,9 @@
  * \brief evaluation metrics for multiclass classification.
  * \author Kailong Chen, Tianqi Chen
  */
+#include <rabit/rabit.h>
 #include <xgboost/metric.h>
 #include <cmath>
-#include "../common/sync.h"
 #include "../common/math.h"
 
 namespace xgboost {
@@ -20,26 +20,31 @@ DMLC_REGISTRY_FILE_TAG(multiclass_metric);
  */
 template<typename Derived>
 struct EvalMClassBase : public Metric {
-  bst_float Eval(const std::vector<bst_float> &preds,
+  bst_float Eval(const HostDeviceVector<bst_float> &preds,
                  const MetaInfo &info,
-                 bool distributed) const override {
-    CHECK_NE(info.labels_.size(), 0U) << "label set cannot be empty";
-    CHECK(preds.size() % info.labels_.size() == 0)
+                 bool distributed) override {
+    CHECK_NE(info.labels_.Size(), 0U) << "label set cannot be empty";
+    CHECK(preds.Size() % info.labels_.Size() == 0)
         << "label and prediction size not match";
-    const size_t nclass = preds.size() / info.labels_.size();
+    const size_t nclass = preds.Size() / info.labels_.Size();
     CHECK_GE(nclass, 1U)
         << "mlogloss and merror are only used for multi-class classification,"
         << " use logloss for binary classification";
-    const auto ndata = static_cast<bst_omp_uint>(info.labels_.size());
+    const auto ndata = static_cast<bst_omp_uint>(info.labels_.Size());
     double sum = 0.0, wsum = 0.0;
     int label_error = 0;
-    #pragma omp parallel for reduction(+: sum, wsum) schedule(static)
+
+    const auto& labels = info.labels_.HostVector();
+    const auto& weights = info.weights_.HostVector();
+    const std::vector<bst_float>& h_preds = preds.HostVector();
+
+#pragma omp parallel for reduction(+: sum, wsum) schedule(static)
     for (bst_omp_uint i = 0; i < ndata; ++i) {
-      const bst_float wt = info.GetWeight(i);
-      auto label =  static_cast<int>(info.labels_[i]);
+      const bst_float wt = weights.size() > 0 ? weights[i] : 1.0f;
+      auto label =  static_cast<int>(labels[i]);
       if (label >= 0 && label < static_cast<int>(nclass)) {
         sum += Derived::EvalRow(label,
-                                preds.data() + i * nclass,
+                                h_preds.data() + i * nclass,
                                 nclass) * wt;
         wsum += wt;
       } else {

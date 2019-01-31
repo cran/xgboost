@@ -11,65 +11,28 @@ namespace linear {
 
 DMLC_REGISTRY_FILE_TAG(updater_shotgun);
 
-// training parameter
-struct ShotgunTrainParam : public dmlc::Parameter<ShotgunTrainParam> {
-  /*! \brief learning_rate */
-  float learning_rate;
-  /*! \brief regularization weight for L2 norm */
-  float reg_lambda;
-  /*! \brief regularization weight for L1 norm */
-  float reg_alpha;
-  int feature_selector;
-  // declare parameters
-  DMLC_DECLARE_PARAMETER(ShotgunTrainParam) {
-    DMLC_DECLARE_FIELD(learning_rate)
-        .set_lower_bound(0.0f)
-        .set_default(0.5f)
-        .describe("Learning rate of each update.");
-    DMLC_DECLARE_FIELD(reg_lambda)
-        .set_lower_bound(0.0f)
-        .set_default(0.0f)
-        .describe("L2 regularization on weights.");
-    DMLC_DECLARE_FIELD(reg_alpha)
-        .set_lower_bound(0.0f)
-        .set_default(0.0f)
-        .describe("L1 regularization on weights.");
-    DMLC_DECLARE_FIELD(feature_selector)
-        .set_default(kCyclic)
-        .add_enum("cyclic", kCyclic)
-        .add_enum("shuffle", kShuffle)
-        .describe("Feature selection or ordering method.");
-    // alias of parameters
-    DMLC_DECLARE_ALIAS(learning_rate, eta);
-    DMLC_DECLARE_ALIAS(reg_lambda, lambda);
-    DMLC_DECLARE_ALIAS(reg_alpha, alpha);
-  }
-  /*! \brief Denormalizes the regularization penalties - to be called at each update */
-  void DenormalizePenalties(double sum_instance_weight) {
-    reg_lambda_denorm = reg_lambda * sum_instance_weight;
-    reg_alpha_denorm = reg_alpha * sum_instance_weight;
-  }
-  // denormalizated regularization penalties
-  float reg_lambda_denorm;
-  float reg_alpha_denorm;
-};
-
 class ShotgunUpdater : public LinearUpdater {
  public:
   // set training parameter
   void Init(const std::vector<std::pair<std::string, std::string> > &args) override {
     param_.InitAllowUnknown(args);
+    if (param_.feature_selector != kCyclic &&
+        param_.feature_selector != kShuffle) {
+      LOG(FATAL) << "Unsupported feature selector for shotgun updater.\n"
+                 << "Supported options are: {cyclic, shuffle}";
+    }
     selector_.reset(FeatureSelector::Create(param_.feature_selector));
   }
   void Update(HostDeviceVector<GradientPair> *in_gpair, DMatrix *p_fmat,
               gbm::GBLinearModel *model, double sum_instance_weight) override {
-    std::vector<GradientPair> &gpair = in_gpair->HostVector();
+    auto &gpair = in_gpair->HostVector();
     param_.DenormalizePenalties(sum_instance_weight);
     const int ngroup = model->param.num_output_group;
 
     // update bias
     for (int gid = 0; gid < ngroup; ++gid) {
-      auto grad = GetBiasGradientParallel(gid, ngroup, in_gpair->HostVector(), p_fmat);
+      auto grad = GetBiasGradientParallel(gid, ngroup,
+                                          in_gpair->ConstHostVector(), p_fmat);
       auto dbias = static_cast<bst_float>(param_.learning_rate *
                                CoordinateDeltaBias(grad.first, grad.second));
       model->bias()[gid] += dbias;
@@ -77,25 +40,24 @@ class ShotgunUpdater : public LinearUpdater {
     }
 
     // lock-free parallel updates of weights
-    selector_->Setup(*model, in_gpair->HostVector(), p_fmat,
+    selector_->Setup(*model, in_gpair->ConstHostVector(), p_fmat,
                      param_.reg_alpha_denorm, param_.reg_lambda_denorm, 0);
-     auto iter = p_fmat->ColIterator();
-    while (iter->Next()) {
-      auto batch = iter->Value();
+    for (const auto &batch : p_fmat->GetColumnBatches()) {
       const auto nfeat = static_cast<bst_omp_uint>(batch.Size());
 #pragma omp parallel for schedule(static)
       for (bst_omp_uint i = 0; i < nfeat; ++i) {
-        int ii = selector_->NextFeature(i, *model, 0, in_gpair->HostVector(), p_fmat,
-                                       param_.reg_alpha_denorm, param_.reg_lambda_denorm);
+        int ii = selector_->NextFeature
+          (i, *model, 0, in_gpair->ConstHostVector(), p_fmat, param_.reg_alpha_denorm,
+           param_.reg_lambda_denorm);
         if (ii < 0) continue;
         const bst_uint fid = ii;
         auto col = batch[ii];
         for (int gid = 0; gid < ngroup; ++gid) {
           double sum_grad = 0.0, sum_hess = 0.0;
-          for (bst_uint j = 0; j < col.length; ++j) {
-            GradientPair &p = gpair[col[j].index * ngroup + gid];
+          for (auto& c : col) {
+            const GradientPair &p = gpair[c.index * ngroup + gid];
             if (p.GetHess() < 0.0f) continue;
-            const bst_float v = col[j].fvalue;
+            const bst_float v = c.fvalue;
             sum_grad += p.GetGrad() * v;
             sum_hess += p.GetHess() * v * v;
           }
@@ -107,10 +69,10 @@ class ShotgunUpdater : public LinearUpdater {
           if (dw == 0.f) continue;
           w += dw;
           // update grad values
-          for (bst_uint j = 0; j < col.length; ++j) {
-            GradientPair &p = gpair[col[j].index * ngroup + gid];
+          for (auto& c : col) {
+            GradientPair &p = gpair[c.index * ngroup + gid];
             if (p.GetHess() < 0.0f) continue;
-            p += GradientPair(p.GetHess() * col[j].fvalue * dw, 0);
+            p += GradientPair(p.GetHess() * c.fvalue * dw, 0);
           }
         }
       }
@@ -119,12 +81,10 @@ class ShotgunUpdater : public LinearUpdater {
 
  protected:
   // training parameters
-  ShotgunTrainParam param_;
+  LinearTrainParam param_;
 
   std::unique_ptr<FeatureSelector> selector_;
 };
-
-DMLC_REGISTER_PARAMETER(ShotgunTrainParam);
 
 XGBOOST_REGISTER_LINEAR_UPDATER(ShotgunUpdater, "shotgun")
     .describe(

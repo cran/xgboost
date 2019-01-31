@@ -37,19 +37,21 @@ class LambdaRankObj : public ObjFunction {
   void Configure(const std::vector<std::pair<std::string, std::string> >& args) override {
     param_.InitAllowUnknown(args);
   }
-  void GetGradient(HostDeviceVector<bst_float>* preds,
+
+  void GetGradient(const HostDeviceVector<bst_float>& preds,
                    const MetaInfo& info,
                    int iter,
                    HostDeviceVector<GradientPair>* out_gpair) override {
-    CHECK_EQ(preds->Size(), info.labels_.size()) << "label size predict size not match";
-    auto& preds_h = preds->HostVector();
+    CHECK_EQ(preds.Size(), info.labels_.Size()) << "label size predict size not match";
+    const auto& preds_h = preds.HostVector();
     out_gpair->Resize(preds_h.size());
     std::vector<GradientPair>& gpair = out_gpair->HostVector();
     // quick consistency when group is not available
-    std::vector<unsigned> tgptr(2, 0); tgptr[1] = static_cast<unsigned>(info.labels_.size());
+    std::vector<unsigned> tgptr(2, 0); tgptr[1] = static_cast<unsigned>(info.labels_.Size());
     const std::vector<unsigned> &gptr = info.group_ptr_.size() == 0 ? tgptr : info.group_ptr_;
-    CHECK(gptr.size() != 0 && gptr.back() == info.labels_.size())
+    CHECK(gptr.size() != 0 && gptr.back() == info.labels_.Size())
         << "group structure not consistent with #rows";
+
     const auto ngroup = static_cast<bst_omp_uint>(gptr.size() - 1);
     #pragma omp parallel
     {
@@ -60,11 +62,17 @@ class LambdaRankObj : public ObjFunction {
       std::vector<LambdaPair> pairs;
       std::vector<ListEntry>  lst;
       std::vector< std::pair<bst_float, unsigned> > rec;
+      bst_float sum_weights = 0;
+      for (bst_omp_uint k = 0; k < ngroup; ++k) {
+        sum_weights += info.GetWeight(k);
+      }
+      bst_float weight_normalization_factor = ngroup/sum_weights;
+      const auto& labels = info.labels_.HostVector();
       #pragma omp for schedule(static)
       for (bst_omp_uint k = 0; k < ngroup; ++k) {
         lst.clear(); pairs.clear();
         for (unsigned j = gptr[k]; j < gptr[k+1]; ++j) {
-          lst.emplace_back(preds_h[j], info.labels_[j], j);
+          lst.emplace_back(preds_h[j], labels[j], j);
           gpair[j] = GradientPair(0.0f, 0.0f);
         }
         std::sort(lst.begin(), lst.end(), ListEntry::CmpPred);
@@ -85,9 +93,11 @@ class LambdaRankObj : public ObjFunction {
               for (unsigned pid = i; pid < j; ++pid) {
                 unsigned ridx = std::uniform_int_distribution<unsigned>(0, nleft + nright - 1)(rnd);
                 if (ridx < nleft) {
-                  pairs.emplace_back(rec[ridx].second, rec[pid].second);
+                  pairs.emplace_back(rec[ridx].second, rec[pid].second,
+                      info.GetWeight(k) * weight_normalization_factor);
                 } else {
-                  pairs.emplace_back(rec[pid].second, rec[ridx+j-i].second);
+                  pairs.emplace_back(rec[pid].second, rec[ridx+j-i].second,
+                      info.GetWeight(k) * weight_normalization_factor);
                 }
               }
             }
@@ -152,6 +162,9 @@ class LambdaRankObj : public ObjFunction {
     // constructor
     LambdaPair(unsigned pos_index, unsigned neg_index)
         : pos_index(pos_index), neg_index(neg_index), weight(1.0f) {}
+    // constructor
+    LambdaPair(unsigned pos_index, unsigned neg_index, bst_float weight)
+        : pos_index(pos_index), neg_index(neg_index), weight(weight) {}
   };
   /*!
    * \brief get lambda weight for existing pairs
@@ -205,7 +218,7 @@ class LambdaRankObjNDCG : public LambdaRankObj {
             ((1 << neg_label) - 1) * pos_loginv + ((1 << pos_label) - 1) * neg_loginv;
         bst_float delta = (original - changed) * IDCG;
         if (delta < 0.0f) delta = - delta;
-        pair.weight = delta;
+        pair.weight *= delta;
       }
     }
   }
@@ -301,7 +314,7 @@ class LambdaRankObjMAP : public LambdaRankObj {
     std::vector<MAPStats> map_stats;
     GetMAPStats(sorted_list, &map_stats);
     for (auto & pair : pairs) {
-      pair.weight =
+      pair.weight *=
           GetLambdaMAP(sorted_list, pair.pos_index,
                        pair.neg_index, &map_stats);
     }

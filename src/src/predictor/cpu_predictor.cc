@@ -53,10 +53,7 @@ class CPUPredictor : public Predictor {
         << "size_leaf_vector is enforced to 0 so far";
     CHECK_EQ(preds.size(), p_fmat->Info().num_row_ * num_group);
     // start collecting the prediction
-     auto iter = p_fmat->RowIterator();
-    iter->BeforeFirst();
-    while (iter->Next()) {
-      const  auto& batch = iter->Value();
+    for (const auto &batch : p_fmat->GetRowBatches()) {
       // parallel over local batch
       constexpr int kUnroll = 8;
       const auto nsize = static_cast<bst_omp_uint>(batch.Size());
@@ -112,7 +109,7 @@ class CPUPredictor : public Predictor {
         ntree_limit * model.param.num_output_group >= model.trees.size()) {
       auto it = cache_.find(dmat);
       if (it != cache_.end()) {
-        HostDeviceVector<bst_float>& y = it->second.predictions;
+        const HostDeviceVector<bst_float>& y = it->second.predictions;
         if (y.Size() != 0) {
           out_preds->Resize(y.Size());
           std::copy(y.HostVector().begin(), y.HostVector().end(),
@@ -128,13 +125,28 @@ class CPUPredictor : public Predictor {
                           HostDeviceVector<bst_float>* out_preds,
                           const gbm::GBTreeModel& model) const {
     size_t n = model.param.num_output_group * info.num_row_;
-    const std::vector<bst_float>& base_margin = info.base_margin_;
+    const auto& base_margin = info.base_margin_.HostVector();
     out_preds->Resize(n);
     std::vector<bst_float>& out_preds_h = out_preds->HostVector();
-    if (base_margin.size() != 0) {
+    if (base_margin.size() == n) {
       CHECK_EQ(out_preds->Size(), n);
       std::copy(base_margin.begin(), base_margin.end(), out_preds_h.begin());
     } else {
+      if (!base_margin.empty()) {
+        std::ostringstream oss;
+        oss << "Warning: Ignoring the base margin, since it has incorrect length. "
+            << "The base margin must be an array of length ";
+        if (model.param.num_output_group > 1) {
+          oss << "[num_class] * [number of data points], i.e. "
+              << model.param.num_output_group << " * " << info.num_row_
+              << " = " << n << ". ";
+        } else {
+          oss << "[number of data points], i.e. " << info.num_row_ << ". ";
+        }
+        oss << "Instead, all data points will use "
+            << "base_score = " << model.base_margin;
+        LOG(INFO) << oss.str();
+      }
       std::fill(out_preds_h.begin(), out_preds_h.end(), model.base_margin);
     }
   }
@@ -218,10 +230,7 @@ class CPUPredictor : public Predictor {
     std::vector<bst_float>& preds = *out_preds;
     preds.resize(info.num_row_ * ntree_limit);
     // start collecting the prediction
-    auto iter = p_fmat->RowIterator();
-    iter->BeforeFirst();
-    while (iter->Next()) {
-      auto batch = iter->Value();
+    for (const auto &batch : p_fmat->GetRowBatches()) {
       // parallel over local batch
       const auto nsize = static_cast<bst_omp_uint>(batch.Size());
 #pragma omp parallel for schedule(static)
@@ -265,12 +274,9 @@ class CPUPredictor : public Predictor {
     for (bst_omp_uint i = 0; i < ntree_limit; ++i) {
       model.trees[i]->FillNodeMeanValues();
     }
+    const std::vector<bst_float>& base_margin = info.base_margin_.HostVector();
     // start collecting the contributions
-    auto iter = p_fmat->RowIterator();
-    const std::vector<bst_float>& base_margin = info.base_margin_;
-    iter->BeforeFirst();
-    while (iter->Next()) {
-      auto batch = iter->Value();
+    for (const auto &batch : p_fmat->GetRowBatches()) {
       // parallel over local batch
       const auto nsize = static_cast<bst_omp_uint>(batch.Size());
 #pragma omp parallel for schedule(static)

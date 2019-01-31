@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdlib>
+#include <cmath>
 #include <sstream>
 #include <limits>
 #include <map>
@@ -17,12 +18,15 @@
 #include <vector>
 #include <algorithm>
 #include <utility>
+#include <stdexcept>
 #include <iostream>
+#include <cerrno>
 #include "./base.h"
 #include "./json.h"
 #include "./logging.h"
 #include "./type_traits.h"
 #include "./optional.h"
+#include "./strtonum.h"
 
 namespace dmlc {
 // this file is backward compatible with non-c++11
@@ -535,8 +539,8 @@ struct ParamManagerSingleton {
   ParamManager manager;
   explicit ParamManagerSingleton(const std::string &param_name) {
     PType param;
-    param.__DECLARE__(this);
     manager.set_name(param_name);
+    param.__DECLARE__(this);
   }
 };
 
@@ -987,16 +991,24 @@ class FieldEntry<float> : public FieldEntryNumeric<FieldEntry<float>, float> {
   typedef FieldEntryNumeric<FieldEntry<float>, float> Parent;
   // override set
   virtual void Set(void *head, const std::string &value) const {
+    size_t pos = 0;  // number of characters processed by dmlc::stof()
     try {
-      this->Get(head) = std::stof(value);
+      this->Get(head) = dmlc::stof(value, &pos);
     } catch (const std::invalid_argument &) {
       std::ostringstream os;
       os << "Invalid Parameter format for " << key_ << " expect " << type_
          << " but value=\'" << value << '\'';
       throw dmlc::ParamError(os.str());
-    } catch (const std::out_of_range) {
+    } catch (const std::out_of_range&) {
       std::ostringstream os;
       os << "Out of range value for " << key_ << ", value=\'" << value << '\'';
+      throw dmlc::ParamError(os.str());
+    }
+    CHECK_LE(pos, value.length());  // just in case
+    if (pos < value.length()) {
+      std::ostringstream os;
+      os << "Some trailing characters could not be parsed: \'"
+         << value.substr(pos) << "\'";
       throw dmlc::ParamError(os.str());
     }
   }
@@ -1012,16 +1024,24 @@ class FieldEntry<double>
   typedef FieldEntryNumeric<FieldEntry<double>, double> Parent;
   // override set
   virtual void Set(void *head, const std::string &value) const {
+    size_t pos = 0;  // number of characters processed by dmlc::stod()
     try {
-      this->Get(head) = std::stod(value);
+      this->Get(head) = dmlc::stod(value, &pos);
     } catch (const std::invalid_argument &) {
       std::ostringstream os;
       os << "Invalid Parameter format for " << key_ << " expect " << type_
          << " but value=\'" << value << '\'';
       throw dmlc::ParamError(os.str());
-    } catch (const std::out_of_range) {
+    } catch (const std::out_of_range&) {
       std::ostringstream os;
       os << "Out of range value for " << key_ << ", value=\'" << value << '\'';
+      throw dmlc::ParamError(os.str());
+    }
+    CHECK_LE(pos, value.length());  // just in case
+    if (pos < value.length()) {
+      std::ostringstream os;
+      os << "Some trailing characters could not be parsed: \'"
+         << value.substr(pos) << "\'";
       throw dmlc::ParamError(os.str());
     }
   }

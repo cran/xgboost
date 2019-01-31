@@ -7,6 +7,7 @@
 #ifndef DMLC_IO_SINGLE_FILE_SPLIT_H_
 #define DMLC_IO_SINGLE_FILE_SPLIT_H_
 
+#include <dmlc/base.h>
 #include <dmlc/io.h>
 #include <dmlc/logging.h>
 #include <sys/stat.h>
@@ -14,9 +15,13 @@
 #include <string>
 #include <algorithm>
 
-#if defined(__FreeBSD__) && DMLC_USE_FOPEN64
-#define fopen64 std::fopen
-#endif
+#ifdef _WIN32
+#define stat_struct __stat64
+#define fstat _fstat64
+#define fileno _fileno
+#else  // _WIN32
+#define stat_struct stat
+#endif  // _WIN32
 
 namespace dmlc {
 namespace io {
@@ -54,7 +59,7 @@ class SingleFileSplit : public InputSplit {
     buffer_size_ = std::max(chunk_size, buffer_size_);
   }
   virtual size_t GetTotalSize(void) {
-    struct stat buf;
+    struct stat_struct buf;
     fstat(fileno(fp_), &buf);
     return buf.st_size;
   }

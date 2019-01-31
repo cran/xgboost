@@ -45,8 +45,6 @@ struct GBTreeTrainParam : public dmlc::Parameter<GBTreeTrainParam> {
   std::string updater_seq;
   /*! \brief type of boosting process to run */
   int process_type;
-  // flag to print out detailed breakdown of runtime
-  int debug_verbose;
   std::string predictor;
   // declare parameters
   DMLC_DECLARE_PARAMETER(GBTreeTrainParam) {
@@ -54,7 +52,7 @@ struct GBTreeTrainParam : public dmlc::Parameter<GBTreeTrainParam> {
         .set_default(1)
         .set_lower_bound(1)
         .describe("Number of parallel trees constructed during each iteration."\
-                  " This option is used to support boosted random forest");
+                  " This option is used to support boosted random forest.");
     DMLC_DECLARE_FIELD(updater_seq)
         .set_default("grow_colmaker,prune")
         .describe("Tree updater sequence.");
@@ -64,10 +62,6 @@ struct GBTreeTrainParam : public dmlc::Parameter<GBTreeTrainParam> {
         .add_enum("update", kUpdate)
         .describe("Whether to run the normal boosting process that creates new trees,"\
                   " or to update the trees in an existing model.");
-    DMLC_DECLARE_FIELD(debug_verbose)
-        .set_lower_bound(0)
-        .set_default(0)
-        .describe("flag to print out detailed breakdown of runtime");
     // add alias
     DMLC_DECLARE_ALIAS(updater_seq, updater);
     DMLC_DECLARE_FIELD(predictor)
@@ -78,8 +72,6 @@ struct GBTreeTrainParam : public dmlc::Parameter<GBTreeTrainParam> {
 
 /*! \brief training parameters */
 struct DartTrainParam : public dmlc::Parameter<DartTrainParam> {
-  /*! \brief whether to not print info during training */
-  bool silent;
   /*! \brief type of sampling algorithm */
   int sample_type;
   /*! \brief type of normalization algorithm */
@@ -94,9 +86,6 @@ struct DartTrainParam : public dmlc::Parameter<DartTrainParam> {
   float learning_rate;
   // declare parameters
   DMLC_DECLARE_PARAMETER(DartTrainParam) {
-    DMLC_DECLARE_FIELD(silent)
-        .set_default(false)
-        .describe("Not print information during training.");
     DMLC_DECLARE_FIELD(sample_type)
         .set_default(0)
         .add_enum("uniform", 0)
@@ -160,7 +149,7 @@ class GBTree : public GradientBooster {
     // configure predictor
     predictor_ = std::unique_ptr<Predictor>(Predictor::Create(tparam_.predictor));
     predictor_->Init(cfg, cache_);
-    monitor_.Init("GBTree", tparam_.debug_verbose);
+    monitor_.Init("GBTree");
   }
 
   void Load(dmlc::Stream* fi) override {
@@ -194,9 +183,10 @@ class GBTree : public GradientBooster {
       CHECK_EQ(in_gpair->Size() % ngroup, 0U)
           << "must have exactly ngroup*nrow gpairs";
       // TODO(canonizer): perform this on GPU if HostDeviceVector has device set.
-      HostDeviceVector<GradientPair> tmp(in_gpair->Size() / ngroup,
-                                      GradientPair(), in_gpair->Devices());
-      std::vector<GradientPair>& gpair_h = in_gpair->HostVector();
+      HostDeviceVector<GradientPair> tmp
+        (in_gpair->Size() / ngroup, GradientPair(),
+         GPUDistribution::Block(in_gpair->Distribution().Devices()));
+      const auto& gpair_h = in_gpair->ConstHostVector();
       auto nsize = static_cast<bst_omp_uint>(tmp.Size());
       for (int gid = 0; gid < ngroup; ++gid) {
         std::vector<GradientPair>& tmp_h = tmp.HostVector();
@@ -282,7 +272,6 @@ class GBTree : public GradientBooster {
         // create new tree
         std::unique_ptr<RegTree> ptr(new RegTree());
         ptr->param.InitAllowUnknown(this->cfg_);
-        ptr->InitModel();
         new_trees.push_back(ptr.get());
         ret->push_back(std::move(ptr));
       } else if (tparam_.process_type == kUpdate) {
@@ -402,7 +391,8 @@ class Dart : public GBTree {
 
     if (init_out_preds) {
       size_t n = num_group * p_fmat->Info().num_row_;
-      const std::vector<bst_float>& base_margin = p_fmat->Info().base_margin_;
+      const auto& base_margin =
+        p_fmat->Info().base_margin_.ConstHostVector();
       out_preds->resize(n);
       if (base_margin.size() != 0) {
         CHECK_EQ(out_preds->size(), n);
@@ -437,12 +427,8 @@ class Dart : public GBTree {
         << "size_leaf_vector is enforced to 0 so far";
     CHECK_EQ(preds.size(), p_fmat->Info().num_row_ * num_group);
     // start collecting the prediction
-    auto iter = p_fmat->RowIterator();
     auto* self = static_cast<Derived*>(this);
-    iter->BeforeFirst();
-    while (iter->Next()) {
-      auto batch = iter->Value();
-      // parallel over local batch
+    for (const auto &batch : p_fmat->GetRowBatches()) {
       constexpr int kUnroll = 8;
       const auto nsize = static_cast<bst_omp_uint>(batch.Size());
       const bst_omp_uint rest = nsize % kUnroll;
@@ -490,10 +476,8 @@ class Dart : public GBTree {
       model_.CommitModel(std::move(new_trees[gid]), gid);
     }
     size_t num_drop = NormalizeTrees(num_new_trees);
-    if (dparam_.silent != 1) {
-      LOG(INFO) << "drop " << num_drop << " trees, "
-                << "weight = " << weight_drop_.back();
-    }
+    LOG(INFO) << "drop " << num_drop << " trees, "
+              << "weight = " << weight_drop_.back();
   }
 
   // predict the leaf scores without dropped trees

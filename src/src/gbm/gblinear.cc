@@ -26,7 +26,6 @@ struct GBLinearTrainParam : public dmlc::Parameter<GBLinearTrainParam> {
   std::string updater;
   float tolerance;
   size_t max_row_perbatch;
-  int debug_verbose;
   DMLC_DECLARE_PARAMETER(GBLinearTrainParam) {
     DMLC_DECLARE_FIELD(updater)
         .set_default("shotgun")
@@ -38,10 +37,6 @@ struct GBLinearTrainParam : public dmlc::Parameter<GBLinearTrainParam> {
     DMLC_DECLARE_FIELD(max_row_perbatch)
         .set_default(std::numeric_limits<size_t>::max())
         .describe("Maximum rows per batch.");
-    DMLC_DECLARE_FIELD(debug_verbose)
-        .set_lower_bound(0)
-        .set_default(0)
-        .describe("flag to print out detailed breakdown of runtime");
   }
 };
 /*!
@@ -69,7 +64,7 @@ class GBLinear : public GradientBooster {
     param_.InitAllowUnknown(cfg);
     updater_.reset(LinearUpdater::Create(param_.updater));
     updater_->Init(cfg);
-    monitor_.Init("GBLinear ", param_.debug_verbose);
+    monitor_.Init("GBLinear");
   }
   void Load(dmlc::Stream* fi) override {
     model_.Load(fi);
@@ -82,13 +77,6 @@ class GBLinear : public GradientBooster {
                HostDeviceVector<GradientPair> *in_gpair,
                ObjFunction* obj) override {
     monitor_.Start("DoBoost");
-
-    if (!p_fmat->HaveColAccess(false)) {
-      monitor_.Start("InitColAccess");
-      std::vector<bool> enabled(p_fmat->Info().num_col_, true);
-      p_fmat->InitColAccess(param_.max_row_perbatch, false);
-      monitor_.Stop("InitColAccess");
-    }
 
     model_.LazyInitModel();
     this->LazySumWeights(p_fmat);
@@ -143,7 +131,7 @@ class GBLinear : public GradientBooster {
     model_.LazyInitModel();
     CHECK_EQ(ntree_limit, 0U)
         << "GBLinear::PredictContribution: ntrees is only valid for gbtree predictor";
-    const std::vector<bst_float>& base_margin = p_fmat->Info().base_margin_;
+    const auto& base_margin = p_fmat->Info().base_margin_.ConstHostVector();
     const int ngroup = model_.param.num_output_group;
     const size_t ncolumns = model_.param.num_feature + 1;
     // allocate space for (#features + bias) times #groups times #rows
@@ -152,10 +140,7 @@ class GBLinear : public GradientBooster {
     // make sure contributions is zeroed, we could be reusing a previously allocated one
     std::fill(contribs.begin(), contribs.end(), 0);
     // start collecting the contributions
-     auto iter = p_fmat->RowIterator();
-    iter->BeforeFirst();
-    while (iter->Next()) {
-       auto batch = iter->Value();
+    for (const auto &batch : p_fmat->GetRowBatches()) {
       // parallel over local batch
       const auto nsize = static_cast<bst_omp_uint>(batch.Size());
       #pragma omp parallel for schedule(static)
@@ -166,9 +151,9 @@ class GBLinear : public GradientBooster {
         for (int gid = 0; gid < ngroup; ++gid) {
           bst_float *p_contribs = &contribs[(row_idx * ngroup + gid) * ncolumns];
           // calculate linear terms' contributions
-          for (bst_uint c = 0; c < inst.length; ++c) {
-            if (inst[c].index >= model_.param.num_feature) continue;
-            p_contribs[inst[c].index] = inst[c].fvalue * model_[inst[c].index][gid];
+          for (auto& ins : inst) {
+            if (ins.index >= model_.param.num_feature) continue;
+            p_contribs[ins.index] = ins.fvalue * model_[ins.index][gid];
           }
           // add base margin to BIAS
           p_contribs[ncolumns - 1] = model_.bias()[gid] +
@@ -201,13 +186,11 @@ class GBLinear : public GradientBooster {
     monitor_.Start("PredictBatchInternal");
       model_.LazyInitModel();
     std::vector<bst_float> &preds = *out_preds;
-    const std::vector<bst_float>& base_margin = p_fmat->Info().base_margin_;
+    const auto& base_margin = p_fmat->Info().base_margin_.ConstHostVector();
     // start collecting the prediction
-     auto iter = p_fmat->RowIterator();
     const int ngroup = model_.param.num_output_group;
     preds.resize(p_fmat->Info().num_row_ * ngroup);
-    while (iter->Next()) {
-       auto batch = iter->Value();
+    for (const auto &batch : p_fmat->GetRowBatches()) {
       // output convention: nrow * k, where nrow is number of rows
       // k is number of group
       // parallel over local batch
@@ -268,9 +251,9 @@ class GBLinear : public GradientBooster {
   inline void Pred(const SparsePage::Inst &inst, bst_float *preds, int gid,
                    bst_float base) {
     bst_float psum = model_.bias()[gid] + base;
-    for (bst_uint i = 0; i < inst.length; ++i) {
-      if (inst[i].index >= model_.param.num_feature) continue;
-      psum += inst[i].fvalue * model_[inst[i].index][gid];
+    for (const auto& ins : inst) {
+      if (ins.index >= model_.param.num_feature) continue;
+      psum += ins.fvalue * model_[ins.index][gid];
     }
     preds[gid] = psum;
   }

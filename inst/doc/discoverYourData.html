@@ -272,12 +272,12 @@ df &lt;-<span class="st"> </span><span class="kw">data.table</span>(Arthritis, <
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">importance &lt;-<span class="st"> </span><span class="kw">xgb.importance</span>(<span class="dt">feature_names =</span> <span class="kw">colnames</span>(sparse_matrix), <span class="dt">model =</span> bst)
 <span class="kw">head</span>(importance)</code></pre></div>
 <pre><code>##             Feature        Gain      Cover  Frequency
-## 1:              Age 0.622031802 0.67251700 0.67241379
-## 2: TreatmentTreated 0.285750503 0.11916649 0.10344828
-## 3:          SexMale 0.048744023 0.04522027 0.08620690
-## 4:      AgeDiscret6 0.016604640 0.04784639 0.05172414
-## 5:      AgeDiscret3 0.016373782 0.08028950 0.05172414
-## 6:      AgeDiscret4 0.009270558 0.02858800 0.01724138</code></pre>
+## 1:              Age 0.622031801 0.67251700 0.67241379
+## 2: TreatmentTreated 0.285750512 0.11916649 0.10344828
+## 3:          SexMale 0.048744021 0.04522027 0.08620690
+## 4:      AgeDiscret6 0.016604635 0.04784639 0.05172414
+## 5:      AgeDiscret3 0.016373781 0.08028950 0.05172414
+## 6:      AgeDiscret4 0.009270557 0.02858800 0.01724138</code></pre>
 <blockquote>
 <p>The column <code>Gain</code> provide the information we are looking for.</p>
 <p>As you can see, features are classified by <code>Gain</code>.</p>
@@ -299,12 +299,12 @@ importanceClean &lt;-<span class="st"> </span>importanceRaw[,<span class="st">`<
 
 <span class="kw">head</span>(importanceClean)</code></pre></div>
 <pre><code>##             Feature        Gain
-## 1:              Age 0.622031802
-## 2: TreatmentTreated 0.285750503
-## 3:          SexMale 0.048744023
-## 4:      AgeDiscret6 0.016604640
-## 5:      AgeDiscret3 0.016373782
-## 6:      AgeDiscret4 0.009270558</code></pre>
+## 1:              Age 0.622031801
+## 2: TreatmentTreated 0.285750512
+## 3:          SexMale 0.048744021
+## 4:      AgeDiscret6 0.016604635
+## 5:      AgeDiscret3 0.016373781
+## 6:      AgeDiscret4 0.009270557</code></pre>
 <blockquote>
 <p>In the table above we have removed two not needed columns and select only the first lines.</p>
 </blockquote>
@@ -391,7 +391,7 @@ test &lt;-<span class="st"> </span>agaricus.test
 
 <span class="co">#Random Forest™ - 1000 trees</span>
 bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train$data, <span class="dt">label =</span> train$label, <span class="dt">max_depth =</span> <span class="dv">4</span>, <span class="dt">num_parallel_tree =</span> <span class="dv">1000</span>, <span class="dt">subsample =</span> <span class="fl">0.5</span>, <span class="dt">colsample_bytree =</span><span class="fl">0.5</span>, <span class="dt">nrounds =</span> <span class="dv">1</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</code></pre></div>
-<pre><code>## [1]  train-error:0.003531</code></pre>
+<pre><code>## [1]  train-error:0.001996</code></pre>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="co">#Boosting - 3 rounds</span>
 bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train$data, <span class="dt">label =</span> train$label, <span class="dt">max_depth =</span> <span class="dv">4</span>, <span class="dt">nrounds =</span> <span class="dv">3</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</code></pre></div>
 <pre><code>## [1]  train-error:0.006142 
