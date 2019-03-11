@@ -16,7 +16,7 @@ struct FHelper {
   inline static void
   Allreduce(DType *senrecvbuf_,
             size_t count,
-            C_PREPARE_FUN prepare_fun,
+            void (*prepare_fun)(void *arg),
             void *prepare_arg) {
     rabit::Allreduce<OP>(senrecvbuf_, count,
                          prepare_fun, prepare_arg);
@@ -28,7 +28,7 @@ struct FHelper<op::BitOR, DType> {
   inline static void
   Allreduce(DType *senrecvbuf_,
             size_t count,
-            C_PREPARE_FUN prepare_fun,
+            void (*prepare_fun)(void *arg),
             void *prepare_arg) {
     utils::Error("DataType does not support bitwise or operation");
   }
@@ -38,7 +38,7 @@ template<typename OP>
 inline void Allreduce_(void *sendrecvbuf_,
                        size_t count,
                        engine::mpi::DataType enum_dtype,
-                       C_PREPARE_FUN prepare_fun,
+                       void (*prepare_fun)(void *arg),
                        void *prepare_arg) {
   using namespace engine::mpi;
   switch (enum_dtype) {
@@ -89,7 +89,7 @@ inline void Allreduce(void *sendrecvbuf,
                       size_t count,
                       engine::mpi::DataType enum_dtype,
                       engine::mpi::OpType enum_op,
-                      C_PREPARE_FUN prepare_fun,
+                      void (*prepare_fun)(void *arg),
                       void *prepare_arg) {
   using namespace engine::mpi;
   switch (enum_op) {
@@ -207,7 +207,7 @@ void RabitAllreduce(void *sendrecvbuf,
                     size_t count,
                     int enum_dtype,
                     int enum_op,
-                    C_PREPARE_FUN prepare_fun,
+                    void (*prepare_fun)(void *arg),
                     void *prepare_arg) {
   rabit::c_api::Allreduce
       (sendrecvbuf, count,

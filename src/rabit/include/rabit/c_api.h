@@ -13,13 +13,13 @@
 #else
 #define RABIT_EXTERN_C
 #include <stdio.h>
-#endif
+#endif  // __cplusplus
 
 #if defined(_MSC_VER) || defined(_WIN32)
 #define RABIT_DLL RABIT_EXTERN_C __declspec(dllexport)
 #else
 #define RABIT_DLL RABIT_EXTERN_C
-#endif
+#endif  // defined(_MSC_VER) || defined(_WIN32)
 
 /*! \brief rabit unsigned long type */
 typedef unsigned long rbt_ulong;  // NOLINT(*)
@@ -103,14 +103,11 @@ RABIT_DLL void RabitBroadcast(void *sendrecv_data,
  *                     If the result of Allreduce can be recovered directly, then prepare_func will NOT be called
    * \param prepare_arg argument used to passed into the lazy preprocessing function
    */
-
-RABIT_EXTERN_C typedef void (*C_PREPARE_FUN)(void *arg);
-
 RABIT_DLL void RabitAllreduce(void *sendrecvbuf,
                               size_t count,
                               int enum_dtype,
                               int enum_op,
-                              C_PREPARE_FUN prepare_fun,
+                              void (*prepare_fun)(void *arg),
                               void *prepare_arg);
 
 /*!
