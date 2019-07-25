@@ -31,32 +31,41 @@ AllreduceRobust::AllreduceRobust(void) {
   env_vars.push_back("rabit_global_replica");
   env_vars.push_back("rabit_local_replica");
 }
-void AllreduceRobust::Init(int argc, char* argv[]) {
-  AllreduceBase::Init(argc, argv);
-  if (num_global_replica == 0) {
-    result_buffer_round = -1;
+bool AllreduceRobust::Init(int argc, char* argv[]) {
+  if (AllreduceBase::Init(argc, argv)) {
+    if (num_global_replica == 0) {
+      result_buffer_round = -1;
+    } else {
+      result_buffer_round = std::max(world_size / num_global_replica, 1);
+    }
+    return true;
   } else {
-    result_buffer_round = std::max(world_size / num_global_replica, 1);
+    return false;
   }
 }
 /*! \brief shutdown the engine */
-void AllreduceRobust::Shutdown(void) {
-  // need to sync the exec before we shutdown, do a pesudo check point
-  // execute checkpoint, note: when checkpoint existing, load will not happen
-  utils::Assert(RecoverExec(NULL, 0, ActionSummary::kCheckPoint, ActionSummary::kSpecialOp),
-                "Shutdown: check point must return true");
-  // reset result buffer
-  resbuf.Clear(); seq_counter = 0;
-  // execute check ack step, load happens here
-  utils::Assert(RecoverExec(NULL, 0, ActionSummary::kCheckAck, ActionSummary::kSpecialOp),
-                "Shutdown: check ack must return true");
-#ifdef __APPLE__
-  // In OSX, one worker shutdowns and closes sockets while rest still run kCheckAck
-  // This cause rest workers checkandrecover and hang inf, https://github.com/dmlc/xgboost/pull/3818
-  // TODO(Chen Qin): a fundamental fix for this
-  sleep(2);
-#endif  // __APPLE__
-  AllreduceBase::Shutdown();
+bool AllreduceRobust::Shutdown(void) {
+  try {
+    // need to sync the exec before we shutdown, do a pesudo check point
+    // execute checkpoint, note: when checkpoint existing, load will not happen
+    utils::Assert(RecoverExec(NULL, 0, ActionSummary::kCheckPoint, ActionSummary::kSpecialOp),
+                  "Shutdown: check point must return true");
+    // reset result buffer
+    resbuf.Clear();
+    seq_counter = 0;
+    // execute check ack step, load happens here
+    utils::Assert(RecoverExec(NULL, 0, ActionSummary::kCheckAck, ActionSummary::kSpecialOp),
+                  "Shutdown: check ack must return true");
+
+#if defined (__APPLE__)
+    sleep(1);
+#endif
+
+    return AllreduceBase::Shutdown();
+  } catch (const std::exception& e) {
+    fprintf(stderr, "%s\n", e.what());
+    return false;
+  }
 }
 /*!
  * \brief set parameters to the engine
@@ -268,8 +277,9 @@ void AllreduceRobust::CheckPoint_(const Serializable *global_model,
   if (num_local_replica != 0) {
     while (true) {
       if (RecoverExec(NULL, 0, 0, ActionSummary::kLocalCheckPoint)) break;
-      // save model model to new version place
+      // save model to new version place
       int new_version = !local_chkpt_version;
+
       local_chkpt[new_version].clear();
       utils::MemoryBufferStream fs(&local_chkpt[new_version]);
       if (local_model != NULL) {
@@ -296,6 +306,7 @@ void AllreduceRobust::CheckPoint_(const Serializable *global_model,
   if (lazy_checkpt) {
     global_lazycheck = global_model;
   } else {
+    printf("[%d] save global checkpoint #%d \n", this->rank, version_number);
     global_checkpoint.resize(0);
     utils::MemoryBufferStream fs(&global_checkpoint);
     fs.Write(&version_number, sizeof(version_number));
@@ -737,6 +748,9 @@ AllreduceRobust::ReturnType AllreduceRobust::TryLoadCheckPoint(bool requester) {
     succ = TryRecoverLocalState(&local_rptr[local_chkpt_version],
                                 &local_chkpt[local_chkpt_version]);
     if (succ != kSuccess) return succ;
+
+    printf("[%d] recovered from local checkpoint version %d \n", this->rank, local_chkpt_version);
+
     int nlocal = std::max(static_cast<int>(local_rptr[local_chkpt_version].size()) - 1, 0);
     // check if everyone is OK
     unsigned state = 0;

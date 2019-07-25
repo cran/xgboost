@@ -43,22 +43,31 @@ struct ThreadLocalEntry {
 typedef ThreadLocalStore<ThreadLocalEntry> EngineThreadLocal;
 
 /*! \brief intiialize the synchronization module */
-void Init(int argc, char *argv[]) {
+bool Init(int argc, char *argv[]) {
   ThreadLocalEntry* e = EngineThreadLocal::Get();
-  utils::Check(e->engine.get() == nullptr,
-               "rabit::Init is already called in this thread");
-  e->initialized = true;
-  e->engine.reset(new Manager());
-  e->engine->Init(argc, argv);
+  if (e->engine.get() == nullptr) {
+    e->initialized = true;
+    e->engine.reset(new Manager());
+    return e->engine->Init(argc, argv);
+  } else {
+    return true;
+  }
 }
 
 /*! \brief finalize syncrhonization module */
-void Finalize() {
+bool Finalize() {
   ThreadLocalEntry* e = EngineThreadLocal::Get();
-  utils::Check(e->engine.get() != nullptr,
-               "rabit::Finalize engine is not initialized or already been finalized.");
-  e->engine->Shutdown();
-  e->engine.reset(nullptr);
+  if (e->engine.get() != nullptr) {
+    if (e->engine->Shutdown()) {
+      e->engine.reset(nullptr);
+      e->initialized = false;
+      return true;
+    } else {
+      return false;
+    }
+  } else {
+    return true;
+  }
 }
 
 /*! \brief singleton method to get engine */
@@ -68,8 +77,7 @@ IEngine *GetEngine() {
   ThreadLocalEntry* e = EngineThreadLocal::Get();
   IEngine* ptr = e->engine.get();
   if (ptr == nullptr) {
-    utils::Check(!e->initialized,
-                 "Doing rabit call after Finalize");
+    utils::Check(!e->initialized, "the rabit has not been initialized");
     return &default_manager;
   } else {
     return ptr;

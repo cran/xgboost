@@ -17,10 +17,8 @@
 
 #if DMLC_LOG_STACK_TRACE
 #include <cxxabi.h>
-#endif
-
-#if DMLC_LOG_STACK_TRACE
-#include <execinfo.h>
+#include <sstream>
+#include DMLC_EXECINFO_H
 #endif
 
 namespace dmlc {
@@ -35,6 +33,68 @@ struct Error : public std::runtime_error {
    */
   explicit Error(const std::string &s) : std::runtime_error(s) {}
 };
+
+#if DMLC_LOG_STACK_TRACE
+inline std::string Demangle(char const *msg_str) {
+  using std::string;
+  string msg(msg_str);
+  size_t symbol_start = string::npos;
+  size_t symbol_end = string::npos;
+  if ( ((symbol_start = msg.find("_Z")) != string::npos)
+       && (symbol_end = msg.find_first_of(" +", symbol_start)) ) {
+    string left_of_symbol(msg, 0, symbol_start);
+    string symbol(msg, symbol_start, symbol_end - symbol_start);
+    string right_of_symbol(msg, symbol_end);
+
+    int status = 0;
+    size_t length = string::npos;
+    std::unique_ptr<char, void (*)(void *__ptr)> demangled_symbol =
+        {abi::__cxa_demangle(symbol.c_str(), 0, &length, &status), &std::free};
+    if (demangled_symbol && status == 0 && length > 0) {
+      string symbol_str(demangled_symbol.get());
+      std::ostringstream os;
+      os << left_of_symbol << symbol_str << right_of_symbol;
+      return os.str();
+    }
+  }
+  return string(msg_str);
+}
+
+// By default skip the first frame because
+// that belongs to ~LogMessageFatal
+inline std::string StackTrace(
+    size_t start_frame = 1,
+    const size_t stack_size = DMLC_LOG_STACK_TRACE_SIZE) {
+  using std::string;
+  std::ostringstream stacktrace_os;
+  std::vector<void*> stack(stack_size);
+  int nframes = backtrace(stack.data(), static_cast<int>(stack_size));
+  stacktrace_os << "Stack trace:\n";
+  char **msgs = backtrace_symbols(stack.data(), nframes);
+  if (msgs != nullptr) {
+    for (int frameno = start_frame; frameno < nframes; ++frameno) {
+      string msg = dmlc::Demangle(msgs[frameno]);
+      stacktrace_os << "  [bt] (" << frameno - start_frame << ") " << msg << "\n";
+    }
+  }
+  free(msgs);
+  string stack_trace = stacktrace_os.str();
+  return stack_trace;
+}
+
+#else  // DMLC_LOG_STACK_TRACE is off
+
+inline std::string demangle(char const* msg_str) {
+  return std::string();
+}
+
+inline std::string StackTrace(size_t start_frame = 1,
+                              const size_t stack_size = 0) {
+  return std::string("Stack trace not available when "
+  "DMLC_LOG_STACK_TRACE is disabled at compile time.");
+}
+
+#endif  // DMLC_LOG_STACK_TRACE
 }  // namespace dmlc
 
 #if DMLC_USE_GLOG
@@ -67,12 +127,36 @@ inline void InitLogging(const char*) {
   // DO NOTHING
 }
 
+// get debug option from env variable.
+inline bool DebugLoggingEnabled() {
+  static int state = 0;
+  if (state == 0) {
+    if (auto var = std::getenv("DMLC_LOG_DEBUG")) {
+      if (std::string(var) == "1") {
+        state = 1;
+      } else {
+        state = -1;
+      }
+    } else {
+      // by default hide debug logging.
+      state = -1;
+    }
+  }
+  return state == 1;
+}
+
 class LogCheckError {
  public:
   LogCheckError() : str(nullptr) {}
   explicit LogCheckError(const std::string& str_) : str(new std::string(str_)) {}
+  LogCheckError(const LogCheckError& other) = delete;
+  LogCheckError(LogCheckError&& other) : str(other.str) {
+    other.str = nullptr;
+  }
   ~LogCheckError() { if (str != nullptr) delete str; }
-  operator bool() {return str != nullptr; }
+  operator bool() const { return str != nullptr; }
+  LogCheckError& operator=(const LogCheckError& other) = delete;
+  LogCheckError& operator=(LogCheckError&& other) = delete;
   std::string* str;
 };
 
@@ -105,7 +189,7 @@ class LogCheckError {
 #define CHECK_BINARY_OP(name, op, x, y)                               \
   if (dmlc::LogCheckError _check_err = dmlc::LogCheck##name(x, y))    \
     dmlc::LogMessageFatal(__FILE__, __LINE__).stream()                \
-      << "Check failed: " << #x " " #op " " #y << *(_check_err.str)
+      << "Check failed: " << #x " " #op " " #y << *(_check_err.str) << ": "
 
 
 
@@ -121,7 +205,7 @@ DEFINE_CHECK_FUNC(_NE, !=)
 #define CHECK(x)                                           \
   if (!(x))                                                \
     dmlc::LogMessageFatal(__FILE__, __LINE__).stream()     \
-      << "Check failed: " #x << ' '
+      << "Check failed: " #x << ": "
 #define CHECK_LT(x, y) CHECK_BINARY_OP(_LT, <, x, y)
 #define CHECK_GT(x, y) CHECK_BINARY_OP(_GT, >, x, y)
 #define CHECK_LE(x, y) CHECK_BINARY_OP(_LE, <=, x, y)
@@ -130,8 +214,9 @@ DEFINE_CHECK_FUNC(_NE, !=)
 #define CHECK_NE(x, y) CHECK_BINARY_OP(_NE, !=, x, y)
 #define CHECK_NOTNULL(x) \
   ((x) == NULL ? dmlc::LogMessageFatal(__FILE__, __LINE__).stream() << "Check  notnull: "  #x << ' ', (x) : (x)) // NOLINT(*)
+
 // Debug-only checking.
-#ifdef NDEBUG
+#if DMLC_LOG_DEBUG
 #define DCHECK(x) \
   while (false) CHECK(x)
 #define DCHECK_LT(x, y) \
@@ -154,7 +239,7 @@ DEFINE_CHECK_FUNC(_NE, !=)
 #define DCHECK_GE(x, y) CHECK((x) >= (y))
 #define DCHECK_EQ(x, y) CHECK((x) == (y))
 #define DCHECK_NE(x, y) CHECK((x) != (y))
-#endif  // NDEBUG
+#endif  // DMLC_LOG_DEBUG
 
 #if DMLC_LOG_CUSTOMIZE
 #define LOG_INFO dmlc::CustomLogMessage(__FILE__, __LINE__)
@@ -174,17 +259,20 @@ DEFINE_CHECK_FUNC(_NE, !=)
 #define LOG_IF(severity, condition) \
   !(condition) ? (void)0 : dmlc::LogMessageVoidify() & LOG(severity)
 
-#ifdef NDEBUG
+#if DMLC_LOG_DEBUG
+
+#define LOG_DFATAL LOG_FATAL
+#define DFATAL FATAL
+#define DLOG(severity) LOG_IF(severity, ::dmlc::DebugLoggingEnabled())
+#define DLOG_IF(severity, condition) LOG_IF(severity, ::dmlc::DebugLoggingEnabled() && (condition))
+
+#else
+
 #define LOG_DFATAL LOG_ERROR
 #define DFATAL ERROR
 #define DLOG(severity) true ? (void)0 : dmlc::LogMessageVoidify() & LOG(severity)
 #define DLOG_IF(severity, condition) \
   (true || !(condition)) ? (void)0 : dmlc::LogMessageVoidify() & LOG(severity)
-#else
-#define LOG_DFATAL LOG_FATAL
-#define DFATAL FATAL
-#define DLOG(severity) LOG(severity)
-#define DLOG_IF(severity, condition) LOG_IF(severity, condition)
 #endif
 
 // Poor man version of LOG_EVERY_N
@@ -292,65 +380,6 @@ class LogMessage {
 #endif
 
 
-
-#if DMLC_LOG_STACK_TRACE
-inline std::string Demangle(char const *msg_str) {
-  using std::string;
-  string msg(msg_str);
-  size_t symbol_start = string::npos;
-  size_t symbol_end = string::npos;
-  if ( ((symbol_start = msg.find("_Z")) != string::npos)
-       && (symbol_end = msg.find_first_of(" +", symbol_start)) ) {
-    string left_of_symbol(msg, 0, symbol_start);
-    string symbol(msg, symbol_start, symbol_end - symbol_start);
-    string right_of_symbol(msg, symbol_end);
-
-    int status = 0;
-    size_t length = string::npos;
-    std::unique_ptr<char, decltype(&std::free)> demangled_symbol =
-            {abi::__cxa_demangle(symbol.c_str(), 0, &length, &status), &std::free};
-    if (demangled_symbol && status == 0 && length > 0) {
-      string symbol_str(demangled_symbol.get());
-      std::ostringstream os;
-      os << left_of_symbol << symbol_str << right_of_symbol;
-      return os.str();
-    }
-  }
-  return string(msg_str);
-}
-
-inline std::string StackTrace(
-    const size_t stack_size = DMLC_LOG_STACK_TRACE_SIZE) {
-  using std::string;
-  std::ostringstream stacktrace_os;
-  std::vector<void*> stack(stack_size);
-  int nframes = backtrace(stack.data(), static_cast<int>(stack_size));
-  stacktrace_os << "Stack trace returned " << nframes << " entries:" << std::endl;
-  char **msgs = backtrace_symbols(stack.data(), nframes);
-  if (msgs != nullptr) {
-    for (int frameno = 0; frameno < nframes; ++frameno) {
-      string msg = dmlc::Demangle(msgs[frameno]);
-      stacktrace_os << "[bt] (" << frameno << ") " << msg << "\n";
-    }
-  }
-  free(msgs);
-  string stack_trace = stacktrace_os.str();
-  return stack_trace;
-}
-
-#else  // DMLC_LOG_STACK_TRACE is off
-
-inline std::string demangle(char const* msg_str) {
-  return std::string();
-}
-
-inline std::string StackTrace(const size_t stack_size = 0) {
-  return std::string("stack traces not available when "
-  "DMLC_LOG_STACK_TRACE is disabled at compile time.");
-}
-
-#endif  // DMLC_LOG_STACK_TRACE
-
 #if defined(_LIBCPP_SGX_NO_IOSTREAMS)
 class LogMessageFatal : public LogMessage {
  public:
@@ -367,7 +396,7 @@ class LogMessageFatal : public LogMessage {
  public:
   LogMessageFatal(const char* file, int line) : LogMessage(file, line) {}
   ~LogMessageFatal() {
-    log_stream_ << "\n\n" << StackTrace() << "\n";
+    log_stream_ << "\n" << StackTrace() << "\n";
     abort();
   }
 
@@ -385,7 +414,7 @@ class LogMessageFatal {
   std::ostringstream &stream() { return log_stream_; }
   ~LogMessageFatal() DMLC_THROW_EXCEPTION {
 #if DMLC_LOG_STACK_TRACE
-    log_stream_ << "\n\n" << StackTrace() << "\n";
+    log_stream_ << "\n" << StackTrace() << "\n";
 #endif
 
     // throwing out of destructor is evil

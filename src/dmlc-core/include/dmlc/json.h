@@ -11,6 +11,7 @@
 #include <vector>
 #ifndef _LIBCPP_SGX_NO_IOSTREAMS
 #include <iostream>
+#include <sstream>
 #endif
 #include <cctype>
 #include <string>
@@ -88,7 +89,7 @@ class JSONReader {
    *  // value can be any type that is json serializable.
    *  std::string value;
    *  reader->BeginArray();
-   *  while (reader->NextObjectArrayItem(&value)) {
+   *  while (reader->NextArrayItem(&value)) {
    *    // do somthing to value
    *  }
    * \endcode
@@ -557,7 +558,7 @@ class AnyJSONManager {
 
   template<typename T>
   inline static void WriteAny(JSONWriter *writer, const any &data) {
-    writer->Write(dmlc::get<T>(data));
+    writer->Write(dmlc::unsafe_get<T>(data));
   }
   template<typename T>
   inline static void ReadAny(JSONReader *reader, any* data) {

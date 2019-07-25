@@ -20,6 +20,7 @@
 #include <utility>
 #include <stdexcept>
 #include <iostream>
+#include <iomanip>
 #include <cerrno>
 #include "./base.h"
 #include "./json.h"
@@ -100,7 +101,7 @@ struct ParamFieldInfo {
 };
 
 /*!
- * \brief Parameter is the base type every parameter struct should inheritate from
+ * \brief Parameter is the base type every parameter struct should inherit from
  * The following code is a complete example to setup parameters.
  * \code
  *   struct Param : public dmlc::Parameter<Param> {
@@ -255,7 +256,7 @@ struct Parameter {
  *   };
  * \endcode
  *
- * This macro need to be put in a source file so that registeration only happens once.
+ * This macro need to be put in a source file so that registration only happens once.
  * Refer to example code in Parameter for details
  *
  * \param PType the name of parameter struct.
@@ -297,7 +298,7 @@ struct Parameter {
 
 //! \endcond
 /*!
- * \brief internal namespace for parameter manangement
+ * \brief internal namespace for parameter management
  * There is no need to use it directly in normal case
  */
 namespace parameter {
@@ -310,7 +311,7 @@ namespace parameter {
 class FieldAccessEntry {
  public:
   FieldAccessEntry()
-      : has_default_(false) {}
+      : has_default_(false), index_(0) {}
   /*! \brief destructor */
   virtual ~FieldAccessEntry() {}
   /*!
@@ -1012,6 +1013,12 @@ class FieldEntry<float> : public FieldEntryNumeric<FieldEntry<float>, float> {
       throw dmlc::ParamError(os.str());
     }
   }
+
+ protected:
+  // print the value
+  virtual void PrintValue(std::ostream &os, float value) const {  // NOLINT(*)
+    os << std::setprecision(std::numeric_limits<float>::max_digits10) << value;
+  }
 };
 
 // specialize define for double. Uses stod for platform independent handling of
@@ -1044,6 +1051,12 @@ class FieldEntry<double>
          << value.substr(pos) << "\'";
       throw dmlc::ParamError(os.str());
     }
+  }
+
+ protected:
+  // print the value
+  virtual void PrintValue(std::ostream &os, double value) const {  // NOLINT(*)
+    os << std::setprecision(std::numeric_limits<double>::max_digits10) << value;
   }
 };
 #endif  // DMLC_USE_CXX11
