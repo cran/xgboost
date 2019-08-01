@@ -574,7 +574,7 @@ margin-top: 5px; }
 <pre><code>## [1] TRUE</code></pre>
 <div class="sourceCode" id="cb43"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb43-1" data-line-number="1"><span class="co"># to load it in, simply call xgb.DMatrix</span></a>
 <a class="sourceLine" id="cb43-2" data-line-number="2">dtrain2 &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(<span class="st">&quot;dtrain.buffer&quot;</span>)</a></code></pre></div>
-<pre><code>## [11:35:43] 6513x126 matrix with 143286 entries loaded from dtrain.buffer</code></pre>
+<pre><code>## [10:59:11] 6513x126 matrix with 143286 entries loaded from dtrain.buffer</code></pre>
 <div class="sourceCode" id="cb45"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb45-1" data-line-number="1">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain2, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">eta=</span><span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
 <pre><code>## [1]  train-error:0.046522    test-error:0.042831 
 ## [2]  train-error:0.022263    test-error:0.021726</code></pre>

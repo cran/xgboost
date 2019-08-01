@@ -1,4 +1,4 @@
-f43d58461ceb7ecf2ef9fbe76c15db47 *DESCRIPTION
+946e62ee83d247577f8caca8011f21b1 *DESCRIPTION
 a096f0b88ec84510e8b197f99d358dc3 *LICENSE
 8e94cfed1d5866317500d54c613d73e6 *NAMESPACE
 59845b297656f4f32315f1d5390bd5b3 *R/callbacks.R
@@ -46,13 +46,13 @@ cb0632837d20c9bb88bd40b37fc6700a *demo/predict_leaf_indices.R
 2399b33ca9f168cd4691597a8a1c397d *demo/tweedie_regression.R
 c201b236d3b97226774fadac76ff5016 *inst/doc/discoverYourData.R
 cc0184466ec0d1812d701e0a2c3dcd5c *inst/doc/discoverYourData.Rmd
-6d0cc7a9c11e9b6a768ee9549c8e39cc *inst/doc/discoverYourData.html
+bd7207fe1539b53e22a9551fdc2f224a *inst/doc/discoverYourData.html
 10b4dd4964343ffed3271f40bc8bb4f2 *inst/doc/xgboost.R
 4b9174787964072628b55e5625a48e59 *inst/doc/xgboost.Rnw
-2749d3d97aa2812418e55f313093bd56 *inst/doc/xgboost.pdf
+65433abfd8273499cf01473d3cb9720c *inst/doc/xgboost.pdf
 3bea4166e712076858eabaa27e7fd4aa *inst/doc/xgboostPresentation.R
 4382c417c70d9431cb3cc48d14a41104 *inst/doc/xgboostPresentation.Rmd
-3cce20b94a2ab2284aa3a4a6d0ac849b *inst/doc/xgboostPresentation.html
+2e6832440725f6102332c925f7b4b8d4 *inst/doc/xgboostPresentation.html
 b629d56bae281627833a58fc952248b5 *inst/doc/xgboostfromJSON.R
 6e0b3a9087a317b84815c49cd6e1cd55 *inst/doc/xgboostfromJSON.Rmd
 35775eb64be79e458c6c7b860f1d5c54 *inst/doc/xgboostfromJSON.html
@@ -111,7 +111,7 @@ ee54426291da981e1f06787fcb7a85f2 *src/dmlc-core/include/dmlc/any.h
 9495e5006900af5e05efac8f0632e5ad *src/dmlc-core/include/dmlc/concurrentqueue.h
 f1aeaaee9b102fe92920f7b8e9af8869 *src/dmlc-core/include/dmlc/config.h
 dc84033e251a7b55da2aece238724850 *src/dmlc-core/include/dmlc/data.h
-d995c5bf970090e18f8542c7014b7dcf *src/dmlc-core/include/dmlc/endian.h
+1e079c891bc54faef9b9ced857f10d60 *src/dmlc-core/include/dmlc/endian.h
 30fff571be3c4e1e3fdbdea2d1178b98 *src/dmlc-core/include/dmlc/filesystem.h
 4f76a7eb846058a2c33a4ef114a92ccb *src/dmlc-core/include/dmlc/input_split_shuffle.h
 b0ad1600200595946b8ebebd591edb04 *src/dmlc-core/include/dmlc/io.h
