@@ -11,10 +11,10 @@
 #define NOMINMAX
 
 #include <memory>
-#include "../include/rabit/internal/engine.h"
-#include "./allreduce_base.h"
-#include "./allreduce_robust.h"
-#include "./thread_local.h"
+#include "rabit/internal/engine.h"
+#include "allreduce_base.h"
+#include "allreduce_robust.h"
+#include "rabit/internal/thread_local.h"
 
 namespace rabit {
 namespace engine {
@@ -84,6 +84,19 @@ IEngine *GetEngine() {
   }
 }
 
+// perform in-place allgather, on sendrecvbuf
+void Allgather(void *sendrecvbuf_, size_t total_size,
+                   size_t slice_begin,
+                   size_t slice_end,
+                   size_t size_prev_slice,
+                   const char* _file,
+                   const int _line,
+                   const char* _caller) {
+  GetEngine()->Allgather(sendrecvbuf_, total_size, slice_begin,
+    slice_end, size_prev_slice, _file, _line, _caller);
+}
+
+
 // perform in-place allreduce, on sendrecvbuf
 void Allreduce_(void *sendrecvbuf,
                 size_t type_nbytes,
@@ -92,9 +105,12 @@ void Allreduce_(void *sendrecvbuf,
                 mpi::DataType dtype,
                 mpi::OpType op,
                 IEngine::PreprocFunction prepare_fun,
-                void *prepare_arg) {
-  GetEngine()->Allreduce(sendrecvbuf, type_nbytes, count,
-                         red, prepare_fun, prepare_arg);
+                void *prepare_arg,
+                const char* _file,
+                const int _line,
+                const char* _caller) {
+  GetEngine()->Allreduce(sendrecvbuf, type_nbytes, count, red, prepare_fun,
+    prepare_arg, _file, _line, _caller);
 }
 
 // code for reduce handle
@@ -116,10 +132,14 @@ void ReduceHandle::Init(IEngine::ReduceFunction redfunc, size_t type_nbytes) {
 void ReduceHandle::Allreduce(void *sendrecvbuf,
                              size_t type_nbytes, size_t count,
                              IEngine::PreprocFunction prepare_fun,
-                             void *prepare_arg) {
+                             void *prepare_arg,
+                             const char* _file,
+                             const int _line,
+                             const char* _caller) {
   utils::Assert(redfunc_ != NULL, "must intialize handle to call AllReduce");
   GetEngine()->Allreduce(sendrecvbuf, type_nbytes, count,
-                         redfunc_, prepare_fun, prepare_arg);
+                         redfunc_, prepare_fun, prepare_arg,
+                         _file, _line, _caller);
 }
 }  // namespace engine
 }  // namespace rabit

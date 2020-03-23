@@ -8,10 +8,10 @@
 #define _CRT_SECURE_NO_WARNINGS
 #define _CRT_SECURE_NO_DEPRECATE
 #define NOMINMAX
-#include <map>
-#include <cstdlib>
+#include <netinet/tcp.h>
 #include <cstring>
-#include "./allreduce_base.h"
+#include <map>
+#include "allreduce_base.h"
 
 namespace rabit {
 
@@ -39,14 +39,8 @@ AllreduceBase::AllreduceBase(void) {
   err_link = NULL;
   dmlc_role = "worker";
   this->SetParam("rabit_reduce_buffer", "256MB");
-  // setup possible enviroment variable of intrest
-  env_vars.push_back("rabit_task_id");
-  env_vars.push_back("rabit_num_trial");
-  env_vars.push_back("rabit_reduce_buffer");
-  env_vars.push_back("rabit_reduce_ring_mincount");
-  env_vars.push_back("rabit_tracker_uri");
-  env_vars.push_back("rabit_tracker_port");
-  // also include dmlc support direct variables
+  // setup possible enviroment variable of interest
+  // include dmlc support direct variables
   env_vars.push_back("DMLC_TASK_ID");
   env_vars.push_back("DMLC_ROLE");
   env_vars.push_back("DMLC_NUM_ATTEMPT");
@@ -80,7 +74,7 @@ bool AllreduceBase::Init(int argc, char* argv[]) {
     if (task_id == NULL) {
       task_id = getenv("mapreduce_task_id");
     }
-    if (hadoop_mode != 0) {
+    if (hadoop_mode) {
       utils::Check(task_id != NULL,
                    "hadoop_mode is set but cannot find mapred_task_id");
     }
@@ -101,7 +95,7 @@ bool AllreduceBase::Init(int argc, char* argv[]) {
     if (num_task == NULL) {
       num_task = getenv("mapreduce_job_maps");
     }
-    if (hadoop_mode != 0) {
+    if (hadoop_mode) {
       utils::Check(num_task != NULL,
                    "hadoop_mode is set but cannot find mapred_map_tasks");
     }
@@ -114,6 +108,7 @@ bool AllreduceBase::Init(int argc, char* argv[]) {
             ", quit this program by exit 0\n");
     exit(0);
   }
+
   // clear the setting before start reconnection
   this->rank = -1;
   //---------------------
@@ -138,8 +133,6 @@ bool AllreduceBase::Shutdown(void) {
     utils::TCPSocket tracker = this->ConnectTracker();
     tracker.SendStr(std::string("shutdown"));
     tracker.Close();
-    // close listening sockets
-    sock_listen.Close();
     utils::TCPSocket::Finalize();
     return true;
   } catch (const std::exception& e) {
@@ -147,6 +140,7 @@ bool AllreduceBase::Shutdown(void) {
     return false;
   }
 }
+
 void AllreduceBase::TrackerPrint(const std::string &msg) {
   if (tracker_uri == "NULL") {
     utils::Printf("%s", msg.c_str()); return;
@@ -156,6 +150,7 @@ void AllreduceBase::TrackerPrint(const std::string &msg) {
   tracker.SendStr(msg);
   tracker.Close();
 }
+
 // util to parse data with unit suffix
 inline size_t ParseUnit(const char *name, const char *val) {
   char unit;
@@ -192,9 +187,10 @@ void AllreduceBase::SetParam(const char *name, const char *val) {
   if (!strcmp(name, "DMLC_TASK_ID")) task_id = val;
   if (!strcmp(name, "DMLC_ROLE")) dmlc_role = val;
   if (!strcmp(name, "rabit_world_size")) world_size = atoi(val);
-  if (!strcmp(name, "rabit_hadoop_mode")) hadoop_mode = atoi(val);
+  if (!strcmp(name, "rabit_hadoop_mode")) hadoop_mode = utils::StringToBool(val);
   if (!strcmp(name, "rabit_reduce_ring_mincount")) {
-    reduce_ring_mincount = ParseUnit(name, val);
+    reduce_ring_mincount = atoi(val);
+    utils::Assert(reduce_ring_mincount > 0, "rabit_reduce_ring_mincount should be greater than 0");
   }
   if (!strcmp(name, "rabit_reduce_buffer")) {
     reduce_buffer_size = (ParseUnit(name, val) + 7) >> 3;
@@ -210,6 +206,25 @@ void AllreduceBase::SetParam(const char *name, const char *val) {
     } else {
       throw std::runtime_error("invalid value of DMLC_WORKER_STOP_PROCESS_ON_ERROR");
     }
+  }
+  if (!strcmp(name, "rabit_bootstrap_cache")) {
+    rabit_bootstrap_cache = utils::StringToBool(val);
+  }
+  if (!strcmp(name, "rabit_debug")) {
+    rabit_debug = utils::StringToBool(val);
+  }
+  if (!strcmp(name, "rabit_timeout")) {
+    rabit_timeout = utils::StringToBool(val);
+  }
+  if (!strcmp(name, "rabit_timeout_sec")) {
+    timeout_sec = atoi(val);
+    utils::Assert(timeout_sec >= 0, "rabit_timeout_sec should be non negative second");
+  }
+  if (!strcmp(name, "rabit_enable_tcp_no_delay")) {
+    if (!strcmp(val, "true"))
+      rabit_enable_tcp_no_delay = true;
+    else
+      rabit_enable_tcp_no_delay = false;
   }
 }
 /*!
@@ -265,6 +280,7 @@ bool AllreduceBase::ReConnectLinks(const char *cmd) {
   }
   try {
     utils::TCPSocket tracker = this->ConnectTracker();
+    fprintf(stdout, "task %s connected to the tracker\n", task_id.c_str());
     tracker.SendStr(std::string(cmd));
 
     // the rank of previous link, next link in ring
@@ -283,6 +299,12 @@ bool AllreduceBase::ReConnectLinks(const char *cmd) {
     Assert(rank == -1 || newrank == rank,
            "must keep rank to same if the node already have one");
     rank = newrank;
+
+    // tracker got overwhelemed and not able to assign correct rank
+    if (rank == -1) exit(-1);
+
+    fprintf(stdout, "task %s got new rank %d\n", task_id.c_str(), rank);
+
     Assert(tracker.RecvAll(&num_neighbors, sizeof(num_neighbors)) == \
          sizeof(num_neighbors), "ReConnectLink failure 4");
     for (int i = 0; i < num_neighbors; ++i) {
@@ -296,25 +318,15 @@ bool AllreduceBase::ReConnectLinks(const char *cmd) {
     Assert(tracker.RecvAll(&next_rank, sizeof(next_rank)) == sizeof(next_rank),
            "ReConnectLink failure 4");
 
-    if (sock_listen == INVALID_SOCKET || sock_listen.AtMark()) {
-      if (!sock_listen.IsClosed()) {
-        sock_listen.Close();
-      }
-      // create listening socket
-      sock_listen.Create();
-      sock_listen.SetKeepAlive(true);
-      // http://deepix.github.io/2016/10/21/tcprst.html
-      sock_listen.SetLinger(0);
-      // [slave_port, slave_port+1 .... slave_port + newrank ...slave_port + nport_trial)
-      // work around processes bind to same port without set reuse option,
-      // start explore from slave_port + newrank towards end
-      port = sock_listen.TryBindHost(slave_port + newrank % nport_trial, slave_port + nport_trial);
-      // if no port bindable, explore first half of range
-      if (port == -1) sock_listen.TryBindHost(slave_port, newrank % nport_trial + slave_port);
-
-      utils::Check(port != -1, "ReConnectLink fail to bind the ports specified");
-      sock_listen.Listen();
+    utils::TCPSocket sock_listen;
+    if (!sock_listen.IsClosed()) {
+      sock_listen.Close();
     }
+    // create listening socket
+    sock_listen.Create();
+    int port = sock_listen.TryBindHost(slave_port, slave_port + nport_trial);
+    utils::Check(port != -1, "ReConnectLink fail to bind the ports specified");
+    sock_listen.Listen();
 
     // get number of to connect and number of to accept nodes from tracker
     int num_conn, num_accept, num_error = 1;
@@ -402,15 +414,20 @@ bool AllreduceBase::ReConnectLinks(const char *cmd) {
       }
       if (!match) all_links.push_back(r);
     }
-
+    sock_listen.Close();
     this->parent_index = -1;
     // setup tree links and ring structure
     tree_links.plinks.clear();
+    int tcpNoDelay = 1;
     for (size_t i = 0; i < all_links.size(); ++i) {
       utils::Assert(!all_links[i].sock.BadSocket(), "ReConnectLink: bad socket");
       // set the socket to non-blocking mode, enable TCP keepalive
       all_links[i].sock.SetNonBlock(true);
       all_links[i].sock.SetKeepAlive(true);
+      if (rabit_enable_tcp_no_delay) {
+        setsockopt(all_links[i].sock, IPPROTO_TCP,
+                   TCP_NODELAY, reinterpret_cast<void *>(&tcpNoDelay), sizeof(tcpNoDelay));
+      }
       if (tree_neighbors.count(all_links[i].rank) != 0) {
         if (all_links[i].rank == parent_rank) {
           parent_index = static_cast<int>(tree_links.plinks.size());

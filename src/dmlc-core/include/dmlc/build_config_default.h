@@ -1,12 +1,12 @@
 /*!
  * Copyright (c) 2018 by Contributors
- * \file build_config.h
+ * \file build_config_default.h
  * \brief Default detection logic for fopen64 and other symbols.
  *        May be overriden by CMake
  * \author KOLANICH
  */
-#ifndef DMLC_BUILD_CONFIG_H_
-#define DMLC_BUILD_CONFIG_H_
+#ifndef DMLC_BUILD_CONFIG_DEFAULT_H_
+#define DMLC_BUILD_CONFIG_DEFAULT_H_
 
 /* default logic for fopen64 */
 #if DMLC_USE_FOPEN64 && \
@@ -22,9 +22,13 @@
      && !defined(__sun) && !defined(__SVR4)\
      && !(defined __MINGW64__) && !(defined __ANDROID__))\
      && !defined(__CYGWIN__) && !defined(__EMSCRIPTEN__)\
-     && !defined(__RISCV__)
+     && !defined(__RISCV__) && !defined(__hexagon__)
+  #ifndef DMLC_LOG_STACK_TRACE
   #define DMLC_LOG_STACK_TRACE 1
+  #endif
+  #ifndef DMLC_LOG_STACK_TRACE_SIZE
   #define DMLC_LOG_STACK_TRACE_SIZE 10
+  #endif
   #define DMLC_EXECINFO_H <execinfo.h>
 #endif
 
@@ -33,4 +37,4 @@
   #define DMLC_NANOSLEEP_PRESENT
 #endif
 
-#endif  // DMLC_BUILD_CONFIG_H_
+#endif  // DMLC_BUILD_CONFIG_DEFAULT_H_

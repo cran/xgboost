@@ -5,15 +5,15 @@
 
 #include <cstring>
 #include <string>
-#include "../include/rabit/rabit.h"
-#include "../include/rabit/c_api.h"
+#include "rabit/rabit.h"
+#include "rabit/c_api.h"
 
 namespace rabit {
 namespace c_api {
 // helper use to avoid BitOR operator
 template<typename OP, typename DType>
 struct FHelper {
-  inline static void
+  static void
   Allreduce(DType *senrecvbuf_,
             size_t count,
             void (*prepare_fun)(void *arg),
@@ -25,7 +25,7 @@ struct FHelper {
 
 template<typename DType>
 struct FHelper<op::BitOR, DType> {
-  inline static void
+  static void
   Allreduce(DType *senrecvbuf_,
             size_t count,
             void (*prepare_fun)(void *arg),
@@ -35,11 +35,11 @@ struct FHelper<op::BitOR, DType> {
 };
 
 template<typename OP>
-inline void Allreduce_(void *sendrecvbuf_,
-                       size_t count,
-                       engine::mpi::DataType enum_dtype,
-                       void (*prepare_fun)(void *arg),
-                       void *prepare_arg) {
+void Allreduce_(void *sendrecvbuf_,
+                size_t count,
+                engine::mpi::DataType enum_dtype,
+                void (*prepare_fun)(void *arg),
+                void *prepare_arg) {
   using namespace engine::mpi;
   switch (enum_dtype) {
     case kChar:
@@ -85,12 +85,12 @@ inline void Allreduce_(void *sendrecvbuf_,
     default: utils::Error("unknown data_type");
   }
 }
-inline void Allreduce(void *sendrecvbuf,
-                      size_t count,
-                      engine::mpi::DataType enum_dtype,
-                      engine::mpi::OpType enum_op,
-                      void (*prepare_fun)(void *arg),
-                      void *prepare_arg) {
+void Allreduce(void *sendrecvbuf,
+               size_t count,
+               engine::mpi::DataType enum_dtype,
+               engine::mpi::OpType enum_op,
+               void (*prepare_fun)(void *arg),
+               void *prepare_arg) {
   using namespace engine::mpi;
   switch (enum_op) {
     case kMax:
@@ -120,8 +120,66 @@ inline void Allreduce(void *sendrecvbuf,
     default: utils::Error("unknown enum_op");
   }
 }
-
-
+void Allgather(void *sendrecvbuf_,
+               size_t total_size,
+               size_t beginIndex,
+               size_t size_node_slice,
+               size_t size_prev_slice,
+               int enum_dtype) {
+  using namespace engine::mpi;
+  size_t type_size = 0;
+  switch (enum_dtype) {
+  case kChar:
+    type_size = sizeof(char);
+    rabit::Allgather(static_cast<char*>(sendrecvbuf_), total_size * type_size,
+      beginIndex * type_size, (beginIndex + size_node_slice) * type_size,
+      size_prev_slice * type_size);
+    break;
+  case kUChar:
+    type_size = sizeof(unsigned char);
+    rabit::Allgather(static_cast<unsigned char*>(sendrecvbuf_), total_size * type_size,
+      beginIndex * type_size, (beginIndex + size_node_slice) * type_size,
+      size_prev_slice * type_size);
+    break;
+  case kInt:
+    type_size = sizeof(int);
+    rabit::Allgather(static_cast<int*>(sendrecvbuf_), total_size * type_size,
+      beginIndex * type_size, (beginIndex + size_node_slice) * type_size,
+      size_prev_slice * type_size);
+    break;
+  case kUInt:
+    type_size = sizeof(unsigned);
+    rabit::Allgather(static_cast<unsigned*>(sendrecvbuf_), total_size * type_size,
+      beginIndex * type_size, (beginIndex + size_node_slice) * type_size,
+      size_prev_slice * type_size);
+    break;
+  case kLong:
+    type_size = sizeof(int64_t);
+    rabit::Allgather(static_cast<int64_t*>(sendrecvbuf_), total_size * type_size,
+      beginIndex * type_size, (beginIndex + size_node_slice) * type_size,
+      size_prev_slice * type_size);
+    break;
+  case kULong:
+    type_size = sizeof(uint64_t);
+    rabit::Allgather(static_cast<uint64_t*>(sendrecvbuf_), total_size * type_size,
+      beginIndex * type_size, (beginIndex + size_node_slice) * type_size,
+      size_prev_slice * type_size);
+    break;
+  case kFloat:
+    type_size = sizeof(float);
+    rabit::Allgather(static_cast<float*>(sendrecvbuf_), total_size * type_size,
+      beginIndex * type_size, (beginIndex + size_node_slice) * type_size,
+      size_prev_slice * type_size);
+    break;
+  case kDouble:
+    type_size = sizeof(double);
+    rabit::Allgather(static_cast<double*>(sendrecvbuf_), total_size * type_size,
+      beginIndex * type_size, (beginIndex + size_node_slice) * type_size,
+      size_prev_slice * type_size);
+    break;
+  default: utils::Error("unknown data_type");
+  }
+}
 
 // wrapper for serialization
 struct ReadWrapper : public Serializable {
@@ -170,6 +228,10 @@ bool RabitFinalize() {
   return rabit::Finalize();
 }
 
+int RabitGetRingPrevRank() {
+  return rabit::GetRingPrevRank();
+}
+
 int RabitGetRank() {
   return rabit::GetRank();
 }
@@ -202,6 +264,21 @@ void RabitBroadcast(void *sendrecv_data,
                     rbt_ulong size, int root) {
   rabit::Broadcast(sendrecv_data, size, root);
 }
+
+void RabitAllgather(void *sendrecvbuf_,
+                        size_t total_size,
+                        size_t beginIndex,
+                        size_t size_node_slice,
+                        size_t size_prev_slice,
+                        int enum_dtype) {
+  rabit::c_api::Allgather(sendrecvbuf_,
+                          total_size,
+                          beginIndex,
+                          size_node_slice,
+                          size_prev_slice,
+                          static_cast<rabit::engine::mpi::DataType>(enum_dtype));
+}
+
 
 void RabitAllreduce(void *sendrecvbuf,
                     size_t count,
