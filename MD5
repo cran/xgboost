@@ -1,4 +1,4 @@
-6943b50f828f99f3b0e3c26258d4c004 *DESCRIPTION
+16997fb7b5d1fad65cea7775ad23f655 *DESCRIPTION
 5586d388d64539d3a3fb93ff8a728952 *LICENSE
 8e94cfed1d5866317500d54c613d73e6 *NAMESPACE
 59845b297656f4f32315f1d5390bd5b3 *R/callbacks.R
@@ -46,18 +46,18 @@ cb0632837d20c9bb88bd40b37fc6700a *demo/predict_leaf_indices.R
 2399b33ca9f168cd4691597a8a1c397d *demo/tweedie_regression.R
 880e527649c4d1f7d2add0340782137d *inst/doc/discoverYourData.R
 a58a9e83660aee8660f2f48d34224585 *inst/doc/discoverYourData.Rmd
-f6acd7b58b3d3664b8422f9112a29a90 *inst/doc/discoverYourData.html
+d3668437d2988625f9f3b0210014f587 *inst/doc/discoverYourData.html
 d9f36016e150198cc1ba007dc73deadf *inst/doc/xgboost.R
 4b9174787964072628b55e5625a48e59 *inst/doc/xgboost.Rnw
-df6df095b97abef476680fcbcd1ae6a9 *inst/doc/xgboost.pdf
+b044af573774ce268d508d8ca1f066bc *inst/doc/xgboost.pdf
 e2730562f046ccf57980b66ea7ac602f *inst/doc/xgboostPresentation.R
 4382c417c70d9431cb3cc48d14a41104 *inst/doc/xgboostPresentation.Rmd
-28a5c61e88800cbe4668eb78a8aae8d7 *inst/doc/xgboostPresentation.html
-e2245d667c75090bf22082463503c0a0 *inst/doc/xgboostfromJSON.R
-8da93fb337dca955efbe41cae438ceef *inst/doc/xgboostfromJSON.Rmd
-00e1f0a7c15a684530a4367fc9195d3d *inst/doc/xgboostfromJSON.html
-c65ffdbcd232ec163af263510017f585 *man/agaricus.test.Rd
-bc4f9ca1f900e82c391de4753e7d38e8 *man/agaricus.train.Rd
+aa7eff17fa69c29a75c349dd988b98df *inst/doc/xgboostPresentation.html
+44433e584dc4d365225edae5e60a7057 *inst/doc/xgboostfromJSON.R
+6e0b3a9087a317b84815c49cd6e1cd55 *inst/doc/xgboostfromJSON.Rmd
+972a0209eeedc13f728797429413dc90 *inst/doc/xgboostfromJSON.html
+8281b156d84ca7454dc47cf4eb8f2b40 *man/agaricus.test.Rd
+1e7eafe1c72bb6e08fb2f92073cc0377 *man/agaricus.train.Rd
 9b8879b0a1fb1a1cc9f55b86ce852cdb *man/callbacks.Rd
 a49dc161031461ef66cc30d9d6be2f32 *man/cb.cv.predict.Rd
 2e81c1470c803ed781a43d35f3e4b46a *man/cb.early.stop.Rd
@@ -234,7 +234,7 @@ c7e7ff2c260fea26602d6cdc3ae067c5 *src/src/common/group_data.h
 08dcc10f3bdcb27ab07bd775327adf7f *src/src/common/hist_util.h
 6daa2fa6744d21310d966b76ee9cb985 *src/src/common/host_device_vector.cc
 24e8417123e8ecfe6220bea5357b63a2 *src/src/common/host_device_vector.cu
-99ff56e71f11d7545930c22abe9c51a3 *src/src/common/io.cc
+16e0bc911dfb3cc1260e5a0549d8a11a *src/src/common/io.cc
 b298e0ee18511c4533fde51fa2cb2e59 *src/src/common/io.h
 f87df4a92b4faddc307a3d1b4b5588b9 *src/src/common/json.cc
 083a7d4e6d3cf406cfd0f599c8615e8c *src/src/common/math.h
@@ -342,7 +342,7 @@ f89e9d80a1eee9525bb54b928f919f09 *tests/testthat/test_custom_objective.R
 85259031ac5d9bb856f69a4ebcaa914d *tests/testthat/test_dmatrix.R
 c9977b4ae6eb014e1196ed2b026e1bd0 *tests/testthat/test_gc_safety.R
 879102ae697f2d66ec3a8ddc2921902c *tests/testthat/test_glm.R
-12000e689c4b29c61c22dbb26c759a21 *tests/testthat/test_helpers.R
+a202473c541149ab4deef49913d7a7f0 *tests/testthat/test_helpers.R
 204a1e36e97df1b1f079753d8caeb4e4 *tests/testthat/test_interaction_constraints.R
 3892260804911c10dc5fc611cc837a0b *tests/testthat/test_interactions.R
 8c82ca47ea38322fe8b691ef6502fd86 *tests/testthat/test_lint.R
@@ -355,4 +355,4 @@ cb24a90cb8120bd71b9c20605234289d *vignettes/vignette.css
 4b9174787964072628b55e5625a48e59 *vignettes/xgboost.Rnw
 f801e061547fa04e50a1df78b7c42a21 *vignettes/xgboost.bib
 4382c417c70d9431cb3cc48d14a41104 *vignettes/xgboostPresentation.Rmd
-8da93fb337dca955efbe41cae438ceef *vignettes/xgboostfromJSON.Rmd
+6e0b3a9087a317b84815c49cd6e1cd55 *vignettes/xgboostfromJSON.Rmd
