@@ -39,6 +39,12 @@ if (USE_CUDA)
     )
   endif (MSVC)
 
+  if (HIDE_CXX_SYMBOLS)
+    target_compile_options(objxgboost PRIVATE
+      $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fvisibility=hidden>
+    )
+  endif (HIDE_CXX_SYMBOLS)
+
   set_target_properties(objxgboost PROPERTIES
     CUDA_SEPARABLE_COMPILATION OFF)
 else (USE_CUDA)
@@ -88,12 +94,15 @@ if (XGBOOST_BUILTIN_PREFETCH_PRESENT)
     -DXGBOOST_BUILTIN_PREFETCH_PRESENT=1)
 endif (XGBOOST_BUILTIN_PREFETCH_PRESENT)
 
+find_package(Threads REQUIRED)
+list(APPEND SRC_LIBS Threads::Threads ${CMAKE_THREAD_LIBS_INIT})
+
 if (USE_OPENMP OR USE_CUDA)  # CUDA requires OpenMP
   find_package(OpenMP REQUIRED)
   list(APPEND SRC_LIBS OpenMP::OpenMP_CXX)
-  set(LINKED_LIBRARIES_PRIVATE "${LINKED_LIBRARIES_PRIVATE};${SRC_LIBS}" PARENT_SCOPE)
   target_link_libraries(objxgboost PRIVATE OpenMP::OpenMP_CXX)
 endif (USE_OPENMP OR USE_CUDA)
+set(LINKED_LIBRARIES_PRIVATE "${LINKED_LIBRARIES_PRIVATE};${SRC_LIBS}" PARENT_SCOPE)
 
 # For MSVC: Call msvc_use_static_runtime() once again to completely
 # replace /MD with /MT. See https://github.com/dmlc/xgboost/issues/4462

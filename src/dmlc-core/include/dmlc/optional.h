@@ -46,15 +46,25 @@ class optional {
   optional() : is_none(true) {}
   /*! \brief construct an optional object with value */
   explicit optional(const T& value) {
+
+#if __GNUC__ >= 6
+
+#endif
     is_none = false;
     new (&val) T(value);
+
   }
   /*! \brief construct an optional object with another optional object */
   optional(const optional<T>& other) {
+
+#if __GNUC__ >= 6
+
+#endif
     is_none = other.is_none;
     if (!is_none) {
       new (&val) T(other.value());
     }
+
   }
   /*! \brief deconstructor */
   ~optional() {

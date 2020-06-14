@@ -1,5 +1,5 @@
 /*!
- * Copyright (c) 2015 by Contributors
+ * Copyright (c) 2015~2020 by Contributors
  * \file c_api.h
  * \author Tianqi Chen
  * \brief C API of XGBoost, used for interfacing to other languages.
@@ -20,7 +20,7 @@
 #if defined(_MSC_VER) || defined(_WIN32)
 #define XGB_DLL XGB_EXTERN_C __declspec(dllexport)
 #else
-#define XGB_DLL XGB_EXTERN_C
+#define XGB_DLL XGB_EXTERN_C __attribute__ ((visibility ("default")))
 #endif  // defined(_MSC_VER) || defined(_WIN32)
 
 // manually define unsigned long
@@ -40,6 +40,8 @@ typedef void *DataHolderHandle;  // NOLINT(*)
 typedef struct {  // NOLINT(*)
   /*! \brief number of rows in the minibatch */
   size_t size;
+  /* \brief number of columns in the minibatch. */
+  size_t columns;
   /*! \brief row pointer to the rows in the data */
 #ifdef __APPLE__
   /* Necessary as Java on MacOS defines jlong as long int
@@ -416,7 +418,14 @@ XGB_DLL int XGBoosterEvalOneIter(BoosterHandle handle,
  *          4:output feature contributions to individual predictions
  * \param ntree_limit limit number of trees used for prediction, this is only valid for boosted trees
  *    when the parameter is set to 0, we will use all the trees
- * \param training Whether the prediction value is used for training.
+ * \param training Whether the prediction function is used as part of a training loop.
+ *    Prediction can be run in 2 scenarios:
+ *    1. Given data matrix X, obtain prediction y_pred from the model.
+ *    2. Obtain the prediction for computing gradients. For example, DART booster performs dropout
+ *       during training, and the prediction result will be different from the one obtained by normal
+ *       inference step due to dropped trees.
+ *    Set training=false for the first scenario. Set training=true for the second scenario.
+ *    The second scenario applies when you are defining a custom objective function.
  * \param out_len used to store length of returning result
  * \param out_result used to set a pointer to array
  * \return 0 when success, -1 when failure happens
@@ -531,6 +540,7 @@ XGB_DLL int XGBoosterSaveRabitCheckpoint(BoosterHandle handle);
  *        notice.
  *
  * \param handle handle to Booster object.
+ * \param out_len length of output string
  * \param out_str A valid pointer to array of characters.  The characters array is
  *                allocated and managed by XGBoost, while pointer to that array needs to
  *                be managed by caller.

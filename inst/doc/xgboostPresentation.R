@@ -116,7 +116,7 @@ file.remove("./xgboost.model")
 
 ## ----saveLoadRBinVectorModel, message=F, warning=F----------------------------
 # save model to R's raw vector
-rawVec <- xgb.save.raw(bst)
+rawVec <- xgb.serialize(bst)
 
 # print class
 print(class(rawVec))

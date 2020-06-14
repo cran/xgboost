@@ -558,33 +558,30 @@ margin-top: 5px; }
 <h3><span class="header-section-number">1.5.3</span> Do these results make sense?</h3>
 <p>Let’s check some <strong>Chi2</strong> between each of these features and the label.</p>
 <p>Higher <strong>Chi2</strong> means better correlation.</p>
-<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb26-1" data-line-number="1">c2 &lt;-<span class="st"> </span><span class="kw">chisq.test</span>(df<span class="op">$</span>Age, output_vector, <span class="dt">simulate.p.value =</span> T)</a>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb26-1" data-line-number="1">c2 &lt;-<span class="st"> </span><span class="kw">chisq.test</span>(df<span class="op">$</span>Age, output_vector)</a>
 <a class="sourceLine" id="cb26-2" data-line-number="2"><span class="kw">print</span>(c2)</a></code></pre></div>
 <pre><code>## 
-##  Pearson's Chi-squared test with simulated p-value (based on 2000
-##  replicates)
+##  Pearson's Chi-squared test
 ## 
 ## data:  df$Age and output_vector
-## X-squared = 35.475, df = NA, p-value = 0.4863</code></pre>
+## X-squared = 35.475, df = 35, p-value = 0.4458</code></pre>
 <p>Pearson correlation between Age and illness disappearing is <strong>35.48</strong>.</p>
-<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb28-1" data-line-number="1">c2 &lt;-<span class="st"> </span><span class="kw">chisq.test</span>(df<span class="op">$</span>AgeDiscret, output_vector, <span class="dt">simulate.p.value =</span> T)</a>
+<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb28-1" data-line-number="1">c2 &lt;-<span class="st"> </span><span class="kw">chisq.test</span>(df<span class="op">$</span>AgeDiscret, output_vector)</a>
 <a class="sourceLine" id="cb28-2" data-line-number="2"><span class="kw">print</span>(c2)</a></code></pre></div>
 <pre><code>## 
-##  Pearson's Chi-squared test with simulated p-value (based on 2000
-##  replicates)
+##  Pearson's Chi-squared test
 ## 
 ## data:  df$AgeDiscret and output_vector
-## X-squared = 8.2554, df = NA, p-value = 0.1394</code></pre>
+## X-squared = 8.2554, df = 5, p-value = 0.1427</code></pre>
 <p>Our first simplification of Age gives a Pearson correlation is <strong>8.26</strong>.</p>
-<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb30-1" data-line-number="1">c2 &lt;-<span class="st"> </span><span class="kw">chisq.test</span>(df<span class="op">$</span>AgeCat, output_vector, <span class="dt">simulate.p.value =</span> T)</a>
+<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb30-1" data-line-number="1">c2 &lt;-<span class="st"> </span><span class="kw">chisq.test</span>(df<span class="op">$</span>AgeCat, output_vector)</a>
 <a class="sourceLine" id="cb30-2" data-line-number="2"><span class="kw">print</span>(c2)</a></code></pre></div>
 <pre><code>## 
-##  Pearson's Chi-squared test with simulated p-value (based on 2000
-##  replicates)
+##  Pearson's Chi-squared test with Yates' continuity correction
 ## 
 ## data:  df$AgeCat and output_vector
-## X-squared = 3.8182, df = NA, p-value = 0.09595</code></pre>
-<p>The perfectly random split I did between young and old at 30 years old have a low correlation of <strong>3.82</strong>. It’s a result we may expect as may be in my mind &gt; 30 years is being old (I am 32 and starting feeling old, this may explain that), but for the illness we are studying, the age to be vulnerable is not the same.</p>
+## X-squared = 2.3571, df = 1, p-value = 0.1247</code></pre>
+<p>The perfectly random split I did between young and old at 30 years old have a low correlation of <strong>2.36</strong>. It’s a result we may expect as may be in my mind &gt; 30 years is being old (I am 32 and starting feeling old, this may explain that), but for the illness we are studying, the age to be vulnerable is not the same.</p>
 <p>Morality: don’t let your <em>gut</em> lower the quality of your model.</p>
 <p>In <em>data science</em> expression, there is the word <em>science</em> :-)</p>
 </div>
@@ -614,7 +611,7 @@ margin-top: 5px; }
 <a class="sourceLine" id="cb32-5" data-line-number="5"></a>
 <a class="sourceLine" id="cb32-6" data-line-number="6"><span class="co">#Random Forest™ - 1000 trees</span></a>
 <a class="sourceLine" id="cb32-7" data-line-number="7">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train<span class="op">$</span>data, <span class="dt">label =</span> train<span class="op">$</span>label, <span class="dt">max_depth =</span> <span class="dv">4</span>, <span class="dt">num_parallel_tree =</span> <span class="dv">1000</span>, <span class="dt">subsample =</span> <span class="fl">0.5</span>, <span class="dt">colsample_bytree =</span><span class="fl">0.5</span>, <span class="dt">nrounds =</span> <span class="dv">1</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [1]  train-error:0.002917</code></pre>
+<pre><code>## [1]  train-error:0.001842</code></pre>
 <div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb34-1" data-line-number="1"><span class="co">#Boosting - 3 rounds</span></a>
 <a class="sourceLine" id="cb34-2" data-line-number="2">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train<span class="op">$</span>data, <span class="dt">label =</span> train<span class="op">$</span>label, <span class="dt">max_depth =</span> <span class="dv">4</span>, <span class="dt">nrounds =</span> <span class="dv">3</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
 <pre><code>## [1]  train-error:0.006142 

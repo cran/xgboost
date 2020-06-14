@@ -54,15 +54,15 @@ head(importanceClean)
 xgb.plot.importance(importance_matrix = importance)
 
 ## ---- warning=FALSE, message=FALSE--------------------------------------------
-c2 <- chisq.test(df$Age, output_vector, simulate.p.value = T)
+c2 <- chisq.test(df$Age, output_vector)
 print(c2)
 
 ## ---- warning=FALSE, message=FALSE--------------------------------------------
-c2 <- chisq.test(df$AgeDiscret, output_vector, simulate.p.value = T)
+c2 <- chisq.test(df$AgeDiscret, output_vector)
 print(c2)
 
 ## ---- warning=FALSE, message=FALSE--------------------------------------------
-c2 <- chisq.test(df$AgeCat, output_vector, simulate.p.value = T)
+c2 <- chisq.test(df$AgeCat, output_vector)
 print(c2)
 
 ## ---- warning=FALSE, message=FALSE--------------------------------------------
