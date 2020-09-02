@@ -346,12 +346,12 @@ margin-top: 5px; }
 <div id="looking-at-the-raw-data" class="section level4">
 <h4><span class="header-section-number">1.2.2.1</span> Looking at the raw data</h4>
 <p>In this Vignette we will see how to transform a <em>dense</em> <code>data.frame</code> (<em>dense</em> = few zeroes in the matrix) with <em>categorical</em> variables to a very <em>sparse</em> matrix (<em>sparse</em> = lots of zero in the matrix) of <code>numeric</code> features.</p>
-<p>The method we are going to see is usually called <a href="http://en.wikipedia.org/wiki/One-hot">one-hot encoding</a>.</p>
+<p>The method we are going to see is usually called <a href="https://en.wikipedia.org/wiki/One-hot">one-hot encoding</a>.</p>
 <p>The first step is to load <code>Arthritis</code> dataset in memory and wrap it with <code>data.table</code> package.</p>
 <div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb2-1" data-line-number="1"><span class="kw">data</span>(Arthritis)</a>
-<a class="sourceLine" id="cb2-2" data-line-number="2">df &lt;-<span class="st"> </span><span class="kw">data.table</span>(Arthritis, <span class="dt">keep.rownames =</span> F)</a></code></pre></div>
+<a class="sourceLine" id="cb2-2" data-line-number="2">df &lt;-<span class="st"> </span><span class="kw">data.table</span>(Arthritis, <span class="dt">keep.rownames =</span> <span class="ot">FALSE</span>)</a></code></pre></div>
 <blockquote>
-<p><code>data.table</code> is 100% compliant with <strong>R</strong> <code>data.frame</code> but its syntax is more consistent and its performance for large dataset is <a href="http://stackoverflow.com/questions/21435339/data-table-vs-dplyr-can-one-do-something-well-the-other-cant-or-does-poorly">best in class</a> (<code>dplyr</code> from <strong>R</strong> and <code>Pandas</code> from <strong>Python</strong> <a href="https://github.com/Rdatatable/data.table/wiki/Benchmarks-%3A-Grouping">included</a>). Some parts of <strong>Xgboost</strong> <strong>R</strong> package use <code>data.table</code>.</p>
+<p><code>data.table</code> is 100% compliant with <strong>R</strong> <code>data.frame</code> but its syntax is more consistent and its performance for large dataset is <a href="https://stackoverflow.com/questions/21435339/data-table-vs-dplyr-can-one-do-something-well-the-other-cant-or-does-poorly">best in class</a> (<code>dplyr</code> from <strong>R</strong> and <code>Pandas</code> from <strong>Python</strong> <a href="https://github.com/Rdatatable/data.table/wiki/Benchmarks-%3A-Grouping">included</a>). Some parts of <strong>Xgboost</strong> <strong>R</strong> package use <code>data.table</code>.</p>
 </blockquote>
 <p>The first thing we want to do is to have a look to the first few lines of the <code>data.table</code>:</p>
 <div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb3-1" data-line-number="1"><span class="kw">head</span>(df)</a></code></pre></div>
@@ -426,7 +426,7 @@ margin-top: 5px; }
 </div>
 <div id="encoding-categorical-features" class="section level4">
 <h4><span class="header-section-number">1.2.2.3</span> Encoding categorical features</h4>
-<p>Next step, we will transform the categorical data to dummy variables. Several encoding methods exist, e.g., <a href="http://en.wikipedia.org/wiki/One-hot">one-hot encoding</a> is a common approach. We will use the <a href="http://www.ats.ucla.edu/stat/r/library/contrast_coding.htm#dummy">dummy contrast coding</a> which is popular because it produces “full rank” encoding (also see <a href="http://appliedpredictivemodeling.com/blog/2013/10/23/the-basics-of-encoding-categorical-data-for-predictive-models">this blog post by Max Kuhn</a>).</p>
+<p>Next step, we will transform the categorical data to dummy variables. Several encoding methods exist, e.g., <a href="https://en.wikipedia.org/wiki/One-hot">one-hot encoding</a> is a common approach. We will use the <a href="https://stats.idre.ucla.edu/r/library/r-library-contrast-coding-systems-for-categorical-variables/">dummy contrast coding</a> which is popular because it produces “full rank” encoding (also see <a href="http://appliedpredictivemodeling.com/blog/2013/10/23/the-basics-of-encoding-categorical-data-for-predictive-models">this blog post by Max Kuhn</a>).</p>
 <p>The purpose is to transform each value of each <em>categorical</em> feature into a <em>binary</em> feature <code>{0, 1}</code>.</p>
 <p>For example, the column <code>Treatment</code> will be replaced by two columns, <code>TreatmentPlacebo</code>, and <code>TreatmentTreated</code>. Each of them will be <em>binary</em>. Therefore, an observation which has the value <code>Placebo</code> in column <code>Treatment</code> before the transformation will have after the transformation the value <code>1</code> in the new column <code>TreatmentPlacebo</code> and the value <code>0</code> in the new column <code>TreatmentTreated</code>. The column <code>TreatmentPlacebo</code> will disappear during the contrast encoding, as it would be absorbed into a common constant intercept column.</p>
 <p>Column <code>Improved</code> is excluded because it will be our <code>label</code> column, the one we want to predict.</p>
@@ -476,7 +476,7 @@ margin-top: 5px; }
 ## [9]  train-error:0.166667 
 ## [10] train-error:0.166667</code></pre>
 <p>You can see some <code>train-error: 0.XXXXX</code> lines followed by a number. It decreases. Each line shows how well the model explains your data. Lower is better.</p>
-<p>A model which fits too well may <a href="http://en.wikipedia.org/wiki/Overfitting">overfit</a> (meaning it copy/paste too much the past, and won’t be that good to predict the future).</p>
+<p>A model which fits too well may <a href="https://en.wikipedia.org/wiki/Overfitting">overfit</a> (meaning it copy/paste too much the past, and won’t be that good to predict the future).</p>
 <blockquote>
 <p>Here you can see the numbers decrease until line 7 and then increase.</p>
 <p>It probably means we are overfitting. To fix that I should reduce the number of rounds to <code>nrounds = 4</code>. I will let things like that because I don’t really care for the purpose of this example :-)</p>
@@ -596,7 +596,7 @@ margin-top: 5px; }
 </div>
 <div id="special-note-what-about-random-forests" class="section level2">
 <h2><span class="header-section-number">1.7</span> Special Note: What about Random Forests™?</h2>
-<p>As you may know, <a href="http://en.wikipedia.org/wiki/Random_forest">Random Forests™</a> algorithm is cousin with boosting and both are part of the <a href="http://en.wikipedia.org/wiki/Ensemble_learning">ensemble learning</a> family.</p>
+<p>As you may know, <a href="https://en.wikipedia.org/wiki/Random_forest">Random Forests™</a> algorithm is cousin with boosting and both are part of the <a href="https://en.wikipedia.org/wiki/Ensemble_learning">ensemble learning</a> family.</p>
 <p>Both trains several decision trees for one dataset. The <em>main</em> difference is that in Random Forests™, trees are independent and in boosting, the tree <code>N+1</code> focus its learning on the loss (&lt;=&gt; what has not been well modeled by the tree <code>N</code>).</p>
 <p>This difference have an impact on a corner case in feature importance analysis: the <em>correlated features</em>.</p>
 <p>Imagine two features perfectly correlated, feature <code>A</code> and feature <code>B</code>. For one specific tree, if the algorithm needs one of them, it will choose randomly (true in both boosting and Random Forests™).</p>
@@ -611,7 +611,7 @@ margin-top: 5px; }
 <a class="sourceLine" id="cb32-5" data-line-number="5"></a>
 <a class="sourceLine" id="cb32-6" data-line-number="6"><span class="co">#Random Forest™ - 1000 trees</span></a>
 <a class="sourceLine" id="cb32-7" data-line-number="7">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train<span class="op">$</span>data, <span class="dt">label =</span> train<span class="op">$</span>label, <span class="dt">max_depth =</span> <span class="dv">4</span>, <span class="dt">num_parallel_tree =</span> <span class="dv">1000</span>, <span class="dt">subsample =</span> <span class="fl">0.5</span>, <span class="dt">colsample_bytree =</span><span class="fl">0.5</span>, <span class="dt">nrounds =</span> <span class="dv">1</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [1]  train-error:0.001842</code></pre>
+<pre><code>## [1]  train-error:0.002150</code></pre>
 <div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb34-1" data-line-number="1"><span class="co">#Boosting - 3 rounds</span></a>
 <a class="sourceLine" id="cb34-2" data-line-number="2">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train<span class="op">$</span>data, <span class="dt">label =</span> train<span class="op">$</span>label, <span class="dt">max_depth =</span> <span class="dv">4</span>, <span class="dt">nrounds =</span> <span class="dv">3</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
 <pre><code>## [1]  train-error:0.006142 

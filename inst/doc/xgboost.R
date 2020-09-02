@@ -11,7 +11,7 @@ data(agaricus.train, package='xgboost')
 data(agaricus.test, package='xgboost')
 train <- agaricus.train
 test <- agaricus.test
-bst <- xgboost(data = train$data, label = train$label, max_depth = 2, eta = 1, 
+bst <- xgboost(data = train$data, label = train$label, max_depth = 2, eta = 1,
                nrounds = 2, objective = "binary:logistic")
 xgb.save(bst, 'model.save')
 bst = xgb.load('model.save')
@@ -46,7 +46,7 @@ evalerror <- function(preds, dtrain) {
 
 dtest <- xgb.DMatrix(test$data, label = test$label)
 watchlist <- list(eval = dtest, train = dtrain)
-param <- list(max_depth = 2, eta = 1, silent = 1)
+param <- list(max_depth = 2, eta = 1)
 
 bst <- xgb.train(param, dtrain, nrounds = 2, watchlist, logregobj, evalerror, maximize = FALSE)
 

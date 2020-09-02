@@ -96,7 +96,7 @@ err <- as.numeric(sum(as.integer(pred > 0.5) != label))/length(label)
 print(paste("test-error=", err))
 
 ## ----dump, message=T, warning=F-----------------------------------------------
-xgb.dump(bst, with_stats = T)
+xgb.dump(bst, with_stats = TRUE)
 
 ## ----saveModel, message=F, warning=F------------------------------------------
 # save model to binary local file

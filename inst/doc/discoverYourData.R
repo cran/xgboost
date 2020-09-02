@@ -6,7 +6,7 @@ if (!require('vcd')) install.packages('vcd')
 
 ## ---- results='hide'----------------------------------------------------------
 data(Arthritis)
-df <- data.table(Arthritis, keep.rownames = F)
+df <- data.table(Arthritis, keep.rownames = FALSE)
 
 ## -----------------------------------------------------------------------------
 head(df)

@@ -364,7 +364,7 @@ margin-top: 5px; }
 <h3><span class="header-section-number">1.2.2</span> CRAN version</h3>
 <p>The version 0.4-2 is on CRAN, and you can install it by:</p>
 <div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb2-1" data-line-number="1"><span class="kw">install.packages</span>(<span class="st">&quot;xgboost&quot;</span>)</a></code></pre></div>
-<p>Formerly available versions can be obtained from the CRAN <a href="https://cran.r-project.org/src/contrib/Archive/xgboost">archive</a></p>
+<p>Formerly available versions can be obtained from the CRAN <a href="https://cran.r-project.org/src/contrib/Archive/xgboost/">archive</a></p>
 </div>
 </div>
 <div id="learning" class="section level2">
@@ -557,7 +557,7 @@ margin-top: 5px; }
 <h3><span class="header-section-number">1.8.3</span> Linear boosting</h3>
 <p>Until now, all the learnings we have performed were based on boosting trees. <strong>XGBoost</strong> implements a second algorithm, based on linear boosting. The only difference with previous command is <code>booster = &quot;gblinear&quot;</code> parameter (and removing <code>eta</code> parameter).</p>
 <div class="sourceCode" id="cb39"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb39-1" data-line-number="1">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain, <span class="dt">booster =</span> <span class="st">&quot;gblinear&quot;</span>, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">eval_metric =</span> <span class="st">&quot;error&quot;</span>, <span class="dt">eval_metric =</span> <span class="st">&quot;logloss&quot;</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [02:12:17] WARNING: amalgamation/../src/learner.cc:480: 
+<pre><code>## [00:19:37] WARNING: amalgamation/../src/learner.cc:516: 
 ## Parameters: { max_depth } might not be used.
 ## 
 ##   This may not be accurate due to some parameters are only used in language bindings but
@@ -565,8 +565,8 @@ margin-top: 5px; }
 ##   verification. Please open an issue if you find above cases.
 ## 
 ## 
-## [1]  train-error:0.015200    train-logloss:0.191813  test-error:0.018622 test-logloss:0.196229 
-## [2]  train-error:0.002917    train-logloss:0.083789  test-error:0.002483 test-logloss:0.086623</code></pre>
+## [1]  train-error:0.011976    train-logloss:0.190955  test-error:0.014277 test-logloss:0.195275 
+## [2]  train-error:0.002917    train-logloss:0.083395  test-error:0.002483 test-logloss:0.086063</code></pre>
 <p>In this specific case, <em>linear boosting</em> gets slightly better performance metrics than decision trees based algorithm.</p>
 <p>In simple cases, it will happen because there is nothing better than a linear algorithm to catch a linear link. However, decision trees are much better to catch a non linear link between predictors and outcome. Because there is no silver bullet, we advise you to check both algorithms with your own datasets to have an idea of what to use.</p>
 </div>
@@ -579,7 +579,7 @@ margin-top: 5px; }
 <pre><code>## [1] TRUE</code></pre>
 <div class="sourceCode" id="cb43"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb43-1" data-line-number="1"><span class="co"># to load it in, simply call xgb.DMatrix</span></a>
 <a class="sourceLine" id="cb43-2" data-line-number="2">dtrain2 &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(<span class="st">&quot;dtrain.buffer&quot;</span>)</a></code></pre></div>
-<pre><code>## [02:12:17] 6513x126 matrix with 143286 entries loaded from dtrain.buffer</code></pre>
+<pre><code>## [00:19:37] 6513x126 matrix with 143286 entries loaded from dtrain.buffer</code></pre>
 <div class="sourceCode" id="cb45"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb45-1" data-line-number="1">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain2, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">eta=</span><span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
 <pre><code>## [1]  train-error:0.046522    test-error:0.042831 
 ## [2]  train-error:0.022263    test-error:0.021726</code></pre>
@@ -603,7 +603,7 @@ xgb.plot.importance(importance_matrix = importance_matrix)</code></pre>
 <div id="view-the-trees-from-a-model" class="section level4">
 <h4><span class="header-section-number">1.8.5.1</span> View the trees from a model</h4>
 <p>You can dump the tree you learned using <code>xgb.dump</code> into a text file.</p>
-<div class="sourceCode" id="cb50"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb50-1" data-line-number="1"><span class="kw">xgb.dump</span>(bst, <span class="dt">with_stats =</span> T)</a></code></pre></div>
+<div class="sourceCode" id="cb50"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb50-1" data-line-number="1"><span class="kw">xgb.dump</span>(bst, <span class="dt">with_stats =</span> <span class="ot">TRUE</span>)</a></code></pre></div>
 <pre><code>##  [1] &quot;booster[0]&quot;                                                                   
 ##  [2] &quot;0:[f28&lt;-9.53674316e-07] yes=1,no=2,missing=1,gain=4000.53101,cover=1628.25&quot;   
 ##  [3] &quot;1:[f55&lt;-9.53674316e-07] yes=3,no=4,missing=3,gain=1158.21204,cover=924.5&quot;     
@@ -669,7 +669,7 @@ xgb.plot.importance(importance_matrix = importance_matrix)</code></pre>
 <h2>References</h2>
 <div id="refs" class="references">
 <div id="ref-Bache+Lichman:2013">
-<p>Bache, K., and M. Lichman. 2013. “UCI Machine Learning Repository.” University of California, Irvine, School of Information; Computer Sciences. <a href="http://archive.ics.uci.edu/ml" class="uri">http://archive.ics.uci.edu/ml</a>.</p>
+<p>Bache, K., and M. Lichman. 2013. “UCI Machine Learning Repository.” University of California, Irvine, School of Information; Computer Sciences. <a href="http://archive.ics.uci.edu/ml/" class="uri">http://archive.ics.uci.edu/ml/</a>.</p>
 </div>
 <div id="ref-friedman2001greedy">
 <p>Friedman, Jerome H. 2001. “Greedy Function Approximation: A Gradient Boosting Machine.” <em>Annals of Statistics</em>. JSTOR, 1189–1232.</p>
