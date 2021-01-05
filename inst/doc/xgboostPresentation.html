@@ -434,8 +434,9 @@ margin-top: 5px; }
 <li><code>nrounds = 2</code>: there will be two passes on the data, the second one will enhance the model by further reducing the difference between ground truth and prediction.</li>
 </ul>
 <div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb15-1" data-line-number="1">bstSparse &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train<span class="op">$</span>data, <span class="dt">label =</span> train<span class="op">$</span>label, <span class="dt">max_depth =</span> <span class="dv">2</span>, <span class="dt">eta =</span> <span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds =</span> <span class="dv">2</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [1]  train-error:0.046522 
-## [2]  train-error:0.022263</code></pre>
+<pre><code>## [07:55:26] WARNING: amalgamation/../src/learner.cc:1061: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+## [1]  train-logloss:0.233366 
+## [2]  train-logloss:0.136656</code></pre>
 <blockquote>
 <p>More complex the relationship between your features and your <code>label</code> is, more passes you need.</p>
 </blockquote>
@@ -446,16 +447,18 @@ margin-top: 5px; }
 <h5><span class="header-section-number">1.3.3.2.1</span> Dense matrix</h5>
 <p>Alternatively, you can put your dataset in a <em>dense</em> matrix, i.e. a basic <strong>R</strong> matrix.</p>
 <div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb17-1" data-line-number="1">bstDense &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> <span class="kw">as.matrix</span>(train<span class="op">$</span>data), <span class="dt">label =</span> train<span class="op">$</span>label, <span class="dt">max_depth =</span> <span class="dv">2</span>, <span class="dt">eta =</span> <span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds =</span> <span class="dv">2</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [1]  train-error:0.046522 
-## [2]  train-error:0.022263</code></pre>
+<pre><code>## [07:55:27] WARNING: amalgamation/../src/learner.cc:1061: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+## [1]  train-logloss:0.233366 
+## [2]  train-logloss:0.136656</code></pre>
 </div>
 <div id="xgb.dmatrix" class="section level5">
 <h5><span class="header-section-number">1.3.3.2.2</span> xgb.DMatrix</h5>
 <p><strong>XGBoost</strong> offers a way to group them in a <code>xgb.DMatrix</code>. You can even add other meta data in it. It will be useful for the most advanced features we will discover later.</p>
 <div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb19-1" data-line-number="1">dtrain &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(<span class="dt">data =</span> train<span class="op">$</span>data, <span class="dt">label =</span> train<span class="op">$</span>label)</a>
 <a class="sourceLine" id="cb19-2" data-line-number="2">bstDMatrix &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> dtrain, <span class="dt">max_depth =</span> <span class="dv">2</span>, <span class="dt">eta =</span> <span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds =</span> <span class="dv">2</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [1]  train-error:0.046522 
-## [2]  train-error:0.022263</code></pre>
+<pre><code>## [07:55:27] WARNING: amalgamation/../src/learner.cc:1061: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+## [1]  train-logloss:0.233366 
+## [2]  train-logloss:0.136656</code></pre>
 </div>
 <div id="verbose-option" class="section level5">
 <h5><span class="header-section-number">1.3.3.2.3</span> Verbose option</h5>
@@ -463,14 +466,17 @@ margin-top: 5px; }
 <p>One of the simplest way to see the training progress is to set the <code>verbose</code> option (see below for more advanced technics).</p>
 <div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb21-1" data-line-number="1"><span class="co"># verbose = 0, no message</span></a>
 <a class="sourceLine" id="cb21-2" data-line-number="2">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> dtrain, <span class="dt">max_depth =</span> <span class="dv">2</span>, <span class="dt">eta =</span> <span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds =</span> <span class="dv">2</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>, <span class="dt">verbose =</span> <span class="dv">0</span>)</a></code></pre></div>
-<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb22-1" data-line-number="1"><span class="co"># verbose = 1, print evaluation metric</span></a>
-<a class="sourceLine" id="cb22-2" data-line-number="2">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> dtrain, <span class="dt">max_depth =</span> <span class="dv">2</span>, <span class="dt">eta =</span> <span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds =</span> <span class="dv">2</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>, <span class="dt">verbose =</span> <span class="dv">1</span>)</a></code></pre></div>
-<pre><code>## [1]  train-error:0.046522 
-## [2]  train-error:0.022263</code></pre>
-<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb24-1" data-line-number="1"><span class="co"># verbose = 2, also print information about tree</span></a>
-<a class="sourceLine" id="cb24-2" data-line-number="2">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> dtrain, <span class="dt">max_depth =</span> <span class="dv">2</span>, <span class="dt">eta =</span> <span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds =</span> <span class="dv">2</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>, <span class="dt">verbose =</span> <span class="dv">2</span>)</a></code></pre></div>
-<pre><code>## [1]  train-error:0.046522 
-## [2]  train-error:0.022263</code></pre>
+<pre><code>## [07:55:27] WARNING: amalgamation/../src/learner.cc:1061: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.</code></pre>
+<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb23-1" data-line-number="1"><span class="co"># verbose = 1, print evaluation metric</span></a>
+<a class="sourceLine" id="cb23-2" data-line-number="2">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> dtrain, <span class="dt">max_depth =</span> <span class="dv">2</span>, <span class="dt">eta =</span> <span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds =</span> <span class="dv">2</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>, <span class="dt">verbose =</span> <span class="dv">1</span>)</a></code></pre></div>
+<pre><code>## [07:55:27] WARNING: amalgamation/../src/learner.cc:1061: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+## [1]  train-logloss:0.233366 
+## [2]  train-logloss:0.136656</code></pre>
+<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb25-1" data-line-number="1"><span class="co"># verbose = 2, also print information about tree</span></a>
+<a class="sourceLine" id="cb25-2" data-line-number="2">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> dtrain, <span class="dt">max_depth =</span> <span class="dv">2</span>, <span class="dt">eta =</span> <span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds =</span> <span class="dv">2</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>, <span class="dt">verbose =</span> <span class="dv">2</span>)</a></code></pre></div>
+<pre><code>## [07:55:27] WARNING: amalgamation/../src/learner.cc:1061: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+## [1]  train-logloss:0.233366 
+## [2]  train-logloss:0.136656</code></pre>
 </div>
 </div>
 </div>
@@ -481,13 +487,13 @@ margin-top: 5px; }
 <div id="perform-the-prediction" class="section level2">
 <h2><span class="header-section-number">1.5</span> Perform the prediction</h2>
 <p>The purpose of the model we have built is to classify new data. As explained before, we will use the <code>test</code> dataset for this step.</p>
-<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb26-1" data-line-number="1">pred &lt;-<span class="st"> </span><span class="kw">predict</span>(bst, test<span class="op">$</span>data)</a>
-<a class="sourceLine" id="cb26-2" data-line-number="2"></a>
-<a class="sourceLine" id="cb26-3" data-line-number="3"><span class="co"># size of the prediction vector</span></a>
-<a class="sourceLine" id="cb26-4" data-line-number="4"><span class="kw">print</span>(<span class="kw">length</span>(pred))</a></code></pre></div>
+<div class="sourceCode" id="cb27"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb27-1" data-line-number="1">pred &lt;-<span class="st"> </span><span class="kw">predict</span>(bst, test<span class="op">$</span>data)</a>
+<a class="sourceLine" id="cb27-2" data-line-number="2"></a>
+<a class="sourceLine" id="cb27-3" data-line-number="3"><span class="co"># size of the prediction vector</span></a>
+<a class="sourceLine" id="cb27-4" data-line-number="4"><span class="kw">print</span>(<span class="kw">length</span>(pred))</a></code></pre></div>
 <pre><code>## [1] 1611</code></pre>
-<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb28-1" data-line-number="1"><span class="co"># limit display of predictions to the first 10</span></a>
-<a class="sourceLine" id="cb28-2" data-line-number="2"><span class="kw">print</span>(<span class="kw">head</span>(pred))</a></code></pre></div>
+<div class="sourceCode" id="cb29"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb29-1" data-line-number="1"><span class="co"># limit display of predictions to the first 10</span></a>
+<a class="sourceLine" id="cb29-2" data-line-number="2"><span class="kw">print</span>(<span class="kw">head</span>(pred))</a></code></pre></div>
 <pre><code>## [1] 0.28583017 0.92392391 0.28583017 0.28583017 0.05169873 0.92392391</code></pre>
 <p>These numbers doesn’t look like <em>binary classification</em> <code>{0,1}</code>. We need to perform a simple transformation before being able to use these results.</p>
 </div>
@@ -496,15 +502,15 @@ margin-top: 5px; }
 <p>The only thing that <strong>XGBoost</strong> does is a <em>regression</em>. <strong>XGBoost</strong> is using <code>label</code> vector to build its <em>regression</em> model.</p>
 <p>How can we use a <em>regression</em> model to perform a binary classification?</p>
 <p>If we think about the meaning of a regression applied to our data, the numbers we get are probabilities that a datum will be classified as <code>1</code>. Therefore, we will set the rule that if this probability for a specific datum is <code>&gt; 0.5</code> then the observation is classified as <code>1</code> (or <code>0</code> otherwise).</p>
-<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb30-1" data-line-number="1">prediction &lt;-<span class="st"> </span><span class="kw">as.numeric</span>(pred <span class="op">&gt;</span><span class="st"> </span><span class="fl">0.5</span>)</a>
-<a class="sourceLine" id="cb30-2" data-line-number="2"><span class="kw">print</span>(<span class="kw">head</span>(prediction))</a></code></pre></div>
+<div class="sourceCode" id="cb31"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb31-1" data-line-number="1">prediction &lt;-<span class="st"> </span><span class="kw">as.numeric</span>(pred <span class="op">&gt;</span><span class="st"> </span><span class="fl">0.5</span>)</a>
+<a class="sourceLine" id="cb31-2" data-line-number="2"><span class="kw">print</span>(<span class="kw">head</span>(prediction))</a></code></pre></div>
 <pre><code>## [1] 0 1 0 0 0 1</code></pre>
 </div>
 <div id="measuring-model-performance" class="section level2">
 <h2><span class="header-section-number">1.7</span> Measuring model performance</h2>
 <p>To measure the model performance, we will compute a simple metric, the <em>average error</em>.</p>
-<div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb32-1" data-line-number="1">err &lt;-<span class="st"> </span><span class="kw">mean</span>(<span class="kw">as.numeric</span>(pred <span class="op">&gt;</span><span class="st"> </span><span class="fl">0.5</span>) <span class="op">!=</span><span class="st"> </span>test<span class="op">$</span>label)</a>
-<a class="sourceLine" id="cb32-2" data-line-number="2"><span class="kw">print</span>(<span class="kw">paste</span>(<span class="st">&quot;test-error=&quot;</span>, err))</a></code></pre></div>
+<div class="sourceCode" id="cb33"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb33-1" data-line-number="1">err &lt;-<span class="st"> </span><span class="kw">mean</span>(<span class="kw">as.numeric</span>(pred <span class="op">&gt;</span><span class="st"> </span><span class="fl">0.5</span>) <span class="op">!=</span><span class="st"> </span>test<span class="op">$</span>label)</a>
+<a class="sourceLine" id="cb33-2" data-line-number="2"><span class="kw">print</span>(<span class="kw">paste</span>(<span class="st">&quot;test-error=&quot;</span>, err))</a></code></pre></div>
 <pre><code>## [1] &quot;test-error= 0.0217256362507759&quot;</code></pre>
 <blockquote>
 <p>Note that the algorithm has not seen the <code>test</code> data during the model construction.</p>
@@ -525,8 +531,8 @@ margin-top: 5px; }
 <div id="dataset-preparation" class="section level3">
 <h3><span class="header-section-number">1.8.1</span> Dataset preparation</h3>
 <p>For the following advanced features, we need to put data in <code>xgb.DMatrix</code> as explained above.</p>
-<div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb34-1" data-line-number="1">dtrain &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(<span class="dt">data =</span> train<span class="op">$</span>data, <span class="dt">label=</span>train<span class="op">$</span>label)</a>
-<a class="sourceLine" id="cb34-2" data-line-number="2">dtest &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(<span class="dt">data =</span> test<span class="op">$</span>data, <span class="dt">label=</span>test<span class="op">$</span>label)</a></code></pre></div>
+<div class="sourceCode" id="cb35"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb35-1" data-line-number="1">dtrain &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(<span class="dt">data =</span> train<span class="op">$</span>data, <span class="dt">label=</span>train<span class="op">$</span>label)</a>
+<a class="sourceLine" id="cb35-2" data-line-number="2">dtest &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(<span class="dt">data =</span> test<span class="op">$</span>data, <span class="dt">label=</span>test<span class="op">$</span>label)</a></code></pre></div>
 </div>
 <div id="measure-learning-progress-with-xgb.train" class="section level3">
 <h3><span class="header-section-number">1.8.2</span> Measure learning progress with xgb.train</h3>
@@ -537,16 +543,17 @@ margin-top: 5px; }
 <p>in some way it is similar to what we have done above with the average error. The main difference is that below it was after building the model, and now it is during the construction that we measure errors.</p>
 </blockquote>
 <p>For the purpose of this example, we use <code>watchlist</code> parameter. It is a list of <code>xgb.DMatrix</code>, each of them tagged with a name.</p>
-<div class="sourceCode" id="cb35"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb35-1" data-line-number="1">watchlist &lt;-<span class="st"> </span><span class="kw">list</span>(<span class="dt">train=</span>dtrain, <span class="dt">test=</span>dtest)</a>
-<a class="sourceLine" id="cb35-2" data-line-number="2"></a>
-<a class="sourceLine" id="cb35-3" data-line-number="3">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">eta=</span><span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [1]  train-error:0.046522    test-error:0.042831 
-## [2]  train-error:0.022263    test-error:0.021726</code></pre>
+<div class="sourceCode" id="cb36"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb36-1" data-line-number="1">watchlist &lt;-<span class="st"> </span><span class="kw">list</span>(<span class="dt">train=</span>dtrain, <span class="dt">test=</span>dtest)</a>
+<a class="sourceLine" id="cb36-2" data-line-number="2"></a>
+<a class="sourceLine" id="cb36-3" data-line-number="3">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">eta=</span><span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
+<pre><code>## [07:55:27] WARNING: amalgamation/../src/learner.cc:1061: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+## [1]  train-logloss:0.233366  test-logloss:0.226687 
+## [2]  train-logloss:0.136656  test-logloss:0.137875</code></pre>
 <p><strong>XGBoost</strong> has computed at each round the same average error metric than seen above (we set <code>nrounds</code> to 2, that is why we have two lines). Obviously, the <code>train-error</code> number is related to the training dataset (the one the algorithm learns from) and the <code>test-error</code> number to the test dataset.</p>
 <p>Both training and test error related metrics are very similar, and in some way, it makes sense: what we have learned from the training dataset matches the observations from the test dataset.</p>
 <p>If with your own dataset you have not such results, you should think about how you divided your dataset in training and test. May be there is something to fix. Again, <code>caret</code> package may <a href="http://topepo.github.io/caret/data-splitting.html">help</a>.</p>
 <p>For a better understanding of the learning progression, you may want to have some specific metric or even use multiple evaluation metrics.</p>
-<div class="sourceCode" id="cb37"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb37-1" data-line-number="1">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">eta=</span><span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">eval_metric =</span> <span class="st">&quot;error&quot;</span>, <span class="dt">eval_metric =</span> <span class="st">&quot;logloss&quot;</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
+<div class="sourceCode" id="cb38"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb38-1" data-line-number="1">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">eta=</span><span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">eval_metric =</span> <span class="st">&quot;error&quot;</span>, <span class="dt">eval_metric =</span> <span class="st">&quot;logloss&quot;</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
 <pre><code>## [1]  train-error:0.046522    train-logloss:0.233366  test-error:0.042831 test-logloss:0.226687 
 ## [2]  train-error:0.022263    train-logloss:0.136656  test-error:0.021726 test-logloss:0.137875</code></pre>
 <blockquote>
@@ -556,8 +563,8 @@ margin-top: 5px; }
 <div id="linear-boosting" class="section level3">
 <h3><span class="header-section-number">1.8.3</span> Linear boosting</h3>
 <p>Until now, all the learnings we have performed were based on boosting trees. <strong>XGBoost</strong> implements a second algorithm, based on linear boosting. The only difference with previous command is <code>booster = &quot;gblinear&quot;</code> parameter (and removing <code>eta</code> parameter).</p>
-<div class="sourceCode" id="cb39"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb39-1" data-line-number="1">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain, <span class="dt">booster =</span> <span class="st">&quot;gblinear&quot;</span>, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">eval_metric =</span> <span class="st">&quot;error&quot;</span>, <span class="dt">eval_metric =</span> <span class="st">&quot;logloss&quot;</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [00:19:37] WARNING: amalgamation/../src/learner.cc:516: 
+<div class="sourceCode" id="cb40"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb40-1" data-line-number="1">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain, <span class="dt">booster =</span> <span class="st">&quot;gblinear&quot;</span>, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">eval_metric =</span> <span class="st">&quot;error&quot;</span>, <span class="dt">eval_metric =</span> <span class="st">&quot;logloss&quot;</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
+<pre><code>## [07:55:27] WARNING: amalgamation/../src/learner.cc:541: 
 ## Parameters: { max_depth } might not be used.
 ## 
 ##   This may not be accurate due to some parameters are only used in language bindings but
@@ -565,8 +572,8 @@ margin-top: 5px; }
 ##   verification. Please open an issue if you find above cases.
 ## 
 ## 
-## [1]  train-error:0.011976    train-logloss:0.190955  test-error:0.014277 test-logloss:0.195275 
-## [2]  train-error:0.002917    train-logloss:0.083395  test-error:0.002483 test-logloss:0.086063</code></pre>
+## [1]  train-error:0.013358    train-logloss:0.191874  test-error:0.016139 test-logloss:0.196161 
+## [2]  train-error:0.002764    train-logloss:0.083364  test-error:0.002483 test-logloss:0.086045</code></pre>
 <p>In this specific case, <em>linear boosting</em> gets slightly better performance metrics than decision trees based algorithm.</p>
 <p>In simple cases, it will happen because there is nothing better than a linear algorithm to catch a linear link. However, decision trees are much better to catch a non linear link between predictors and outcome. Because there is no silver bullet, we advise you to check both algorithms with your own datasets to have an idea of what to use.</p>
 </div>
@@ -575,22 +582,23 @@ margin-top: 5px; }
 <div id="save-load" class="section level4">
 <h4><span class="header-section-number">1.8.4.1</span> Save / Load</h4>
 <p>Like saving models, <code>xgb.DMatrix</code> object (which groups both dataset and outcome) can also be saved using <code>xgb.DMatrix.save</code> function.</p>
-<div class="sourceCode" id="cb41"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb41-1" data-line-number="1"><span class="kw">xgb.DMatrix.save</span>(dtrain, <span class="st">&quot;dtrain.buffer&quot;</span>)</a></code></pre></div>
+<div class="sourceCode" id="cb42"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb42-1" data-line-number="1"><span class="kw">xgb.DMatrix.save</span>(dtrain, <span class="st">&quot;dtrain.buffer&quot;</span>)</a></code></pre></div>
 <pre><code>## [1] TRUE</code></pre>
-<div class="sourceCode" id="cb43"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb43-1" data-line-number="1"><span class="co"># to load it in, simply call xgb.DMatrix</span></a>
-<a class="sourceLine" id="cb43-2" data-line-number="2">dtrain2 &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(<span class="st">&quot;dtrain.buffer&quot;</span>)</a></code></pre></div>
-<pre><code>## [00:19:37] 6513x126 matrix with 143286 entries loaded from dtrain.buffer</code></pre>
-<div class="sourceCode" id="cb45"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb45-1" data-line-number="1">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain2, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">eta=</span><span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [1]  train-error:0.046522    test-error:0.042831 
-## [2]  train-error:0.022263    test-error:0.021726</code></pre>
+<div class="sourceCode" id="cb44"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb44-1" data-line-number="1"><span class="co"># to load it in, simply call xgb.DMatrix</span></a>
+<a class="sourceLine" id="cb44-2" data-line-number="2">dtrain2 &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(<span class="st">&quot;dtrain.buffer&quot;</span>)</a></code></pre></div>
+<pre><code>## [07:55:27] 6513x126 matrix with 143286 entries loaded from dtrain.buffer</code></pre>
+<div class="sourceCode" id="cb46"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb46-1" data-line-number="1">bst &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(<span class="dt">data=</span>dtrain2, <span class="dt">max_depth=</span><span class="dv">2</span>, <span class="dt">eta=</span><span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds=</span><span class="dv">2</span>, <span class="dt">watchlist=</span>watchlist, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
+<pre><code>## [07:55:27] WARNING: amalgamation/../src/learner.cc:1061: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+## [1]  train-logloss:0.233366  test-logloss:0.226687 
+## [2]  train-logloss:0.136656  test-logloss:0.137875</code></pre>
 </div>
 <div id="information-extraction" class="section level4">
 <h4><span class="header-section-number">1.8.4.2</span> Information extraction</h4>
 <p>Information can be extracted from <code>xgb.DMatrix</code> using <code>getinfo</code> function. Hereafter we will extract <code>label</code> data.</p>
-<div class="sourceCode" id="cb47"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb47-1" data-line-number="1">label =<span class="st"> </span><span class="kw">getinfo</span>(dtest, <span class="st">&quot;label&quot;</span>)</a>
-<a class="sourceLine" id="cb47-2" data-line-number="2">pred &lt;-<span class="st"> </span><span class="kw">predict</span>(bst, dtest)</a>
-<a class="sourceLine" id="cb47-3" data-line-number="3">err &lt;-<span class="st"> </span><span class="kw">as.numeric</span>(<span class="kw">sum</span>(<span class="kw">as.integer</span>(pred <span class="op">&gt;</span><span class="st"> </span><span class="fl">0.5</span>) <span class="op">!=</span><span class="st"> </span>label))<span class="op">/</span><span class="kw">length</span>(label)</a>
-<a class="sourceLine" id="cb47-4" data-line-number="4"><span class="kw">print</span>(<span class="kw">paste</span>(<span class="st">&quot;test-error=&quot;</span>, err))</a></code></pre></div>
+<div class="sourceCode" id="cb48"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb48-1" data-line-number="1">label =<span class="st"> </span><span class="kw">getinfo</span>(dtest, <span class="st">&quot;label&quot;</span>)</a>
+<a class="sourceLine" id="cb48-2" data-line-number="2">pred &lt;-<span class="st"> </span><span class="kw">predict</span>(bst, dtest)</a>
+<a class="sourceLine" id="cb48-3" data-line-number="3">err &lt;-<span class="st"> </span><span class="kw">as.numeric</span>(<span class="kw">sum</span>(<span class="kw">as.integer</span>(pred <span class="op">&gt;</span><span class="st"> </span><span class="fl">0.5</span>) <span class="op">!=</span><span class="st"> </span>label))<span class="op">/</span><span class="kw">length</span>(label)</a>
+<a class="sourceLine" id="cb48-4" data-line-number="4"><span class="kw">print</span>(<span class="kw">paste</span>(<span class="st">&quot;test-error=&quot;</span>, err))</a></code></pre></div>
 <pre><code>## [1] &quot;test-error= 0.0217256362507759&quot;</code></pre>
 </div>
 </div>
@@ -603,7 +611,7 @@ xgb.plot.importance(importance_matrix = importance_matrix)</code></pre>
 <div id="view-the-trees-from-a-model" class="section level4">
 <h4><span class="header-section-number">1.8.5.1</span> View the trees from a model</h4>
 <p>You can dump the tree you learned using <code>xgb.dump</code> into a text file.</p>
-<div class="sourceCode" id="cb50"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb50-1" data-line-number="1"><span class="kw">xgb.dump</span>(bst, <span class="dt">with_stats =</span> <span class="ot">TRUE</span>)</a></code></pre></div>
+<div class="sourceCode" id="cb51"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb51-1" data-line-number="1"><span class="kw">xgb.dump</span>(bst, <span class="dt">with_stats =</span> <span class="ot">TRUE</span>)</a></code></pre></div>
 <pre><code>##  [1] &quot;booster[0]&quot;                                                                   
 ##  [2] &quot;0:[f28&lt;-9.53674316e-07] yes=1,no=2,missing=1,gain=4000.53101,cover=1628.25&quot;   
 ##  [3] &quot;1:[f55&lt;-9.53674316e-07] yes=3,no=4,missing=3,gain=1158.21204,cover=924.5&quot;     
@@ -628,36 +636,36 @@ xgb.plot.importance(importance_matrix = importance_matrix)</code></pre>
 <h4><span class="header-section-number">1.8.5.2</span> Save and load models</h4>
 <p>Maybe your dataset is big, and it takes time to train a model on it? May be you are not a big fan of losing time in redoing the same task again and again? In these very rare cases, you will want to save your model and load it when required.</p>
 <p>Hopefully for you, <strong>XGBoost</strong> implements such functions.</p>
-<div class="sourceCode" id="cb53"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb53-1" data-line-number="1"><span class="co"># save model to binary local file</span></a>
-<a class="sourceLine" id="cb53-2" data-line-number="2"><span class="kw">xgb.save</span>(bst, <span class="st">&quot;xgboost.model&quot;</span>)</a></code></pre></div>
+<div class="sourceCode" id="cb54"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb54-1" data-line-number="1"><span class="co"># save model to binary local file</span></a>
+<a class="sourceLine" id="cb54-2" data-line-number="2"><span class="kw">xgb.save</span>(bst, <span class="st">&quot;xgboost.model&quot;</span>)</a></code></pre></div>
 <pre><code>## [1] TRUE</code></pre>
 <blockquote>
 <p><code>xgb.save</code> function should return TRUE if everything goes well and crashes otherwise.</p>
 </blockquote>
 <p>An interesting test to see how identical our saved model is to the original one would be to compare the two predictions.</p>
-<div class="sourceCode" id="cb55"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb55-1" data-line-number="1"><span class="co"># load binary model to R</span></a>
-<a class="sourceLine" id="cb55-2" data-line-number="2">bst2 &lt;-<span class="st"> </span><span class="kw">xgb.load</span>(<span class="st">&quot;xgboost.model&quot;</span>)</a>
-<a class="sourceLine" id="cb55-3" data-line-number="3">pred2 &lt;-<span class="st"> </span><span class="kw">predict</span>(bst2, test<span class="op">$</span>data)</a>
-<a class="sourceLine" id="cb55-4" data-line-number="4"></a>
-<a class="sourceLine" id="cb55-5" data-line-number="5"><span class="co"># And now the test</span></a>
-<a class="sourceLine" id="cb55-6" data-line-number="6"><span class="kw">print</span>(<span class="kw">paste</span>(<span class="st">&quot;sum(abs(pred2-pred))=&quot;</span>, <span class="kw">sum</span>(<span class="kw">abs</span>(pred2<span class="op">-</span>pred))))</a></code></pre></div>
+<div class="sourceCode" id="cb56"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb56-1" data-line-number="1"><span class="co"># load binary model to R</span></a>
+<a class="sourceLine" id="cb56-2" data-line-number="2">bst2 &lt;-<span class="st"> </span><span class="kw">xgb.load</span>(<span class="st">&quot;xgboost.model&quot;</span>)</a>
+<a class="sourceLine" id="cb56-3" data-line-number="3">pred2 &lt;-<span class="st"> </span><span class="kw">predict</span>(bst2, test<span class="op">$</span>data)</a>
+<a class="sourceLine" id="cb56-4" data-line-number="4"></a>
+<a class="sourceLine" id="cb56-5" data-line-number="5"><span class="co"># And now the test</span></a>
+<a class="sourceLine" id="cb56-6" data-line-number="6"><span class="kw">print</span>(<span class="kw">paste</span>(<span class="st">&quot;sum(abs(pred2-pred))=&quot;</span>, <span class="kw">sum</span>(<span class="kw">abs</span>(pred2<span class="op">-</span>pred))))</a></code></pre></div>
 <pre><code>## [1] &quot;sum(abs(pred2-pred))= 0&quot;</code></pre>
 <blockquote>
 <p>result is <code>0</code>? We are good!</p>
 </blockquote>
 <p>In some very specific cases, like when you want to pilot <strong>XGBoost</strong> from <code>caret</code> package, you will want to save the model as a <em>R</em> binary vector. See below how to do it.</p>
-<div class="sourceCode" id="cb57"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb57-1" data-line-number="1"><span class="co"># save model to R's raw vector</span></a>
-<a class="sourceLine" id="cb57-2" data-line-number="2">rawVec &lt;-<span class="st"> </span><span class="kw">xgb.serialize</span>(bst)</a>
-<a class="sourceLine" id="cb57-3" data-line-number="3"></a>
-<a class="sourceLine" id="cb57-4" data-line-number="4"><span class="co"># print class</span></a>
-<a class="sourceLine" id="cb57-5" data-line-number="5"><span class="kw">print</span>(<span class="kw">class</span>(rawVec))</a></code></pre></div>
+<div class="sourceCode" id="cb58"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb58-1" data-line-number="1"><span class="co"># save model to R's raw vector</span></a>
+<a class="sourceLine" id="cb58-2" data-line-number="2">rawVec &lt;-<span class="st"> </span><span class="kw">xgb.serialize</span>(bst)</a>
+<a class="sourceLine" id="cb58-3" data-line-number="3"></a>
+<a class="sourceLine" id="cb58-4" data-line-number="4"><span class="co"># print class</span></a>
+<a class="sourceLine" id="cb58-5" data-line-number="5"><span class="kw">print</span>(<span class="kw">class</span>(rawVec))</a></code></pre></div>
 <pre><code>## [1] &quot;raw&quot;</code></pre>
-<div class="sourceCode" id="cb59"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb59-1" data-line-number="1"><span class="co"># load binary model to R</span></a>
-<a class="sourceLine" id="cb59-2" data-line-number="2">bst3 &lt;-<span class="st"> </span><span class="kw">xgb.load</span>(rawVec)</a>
-<a class="sourceLine" id="cb59-3" data-line-number="3">pred3 &lt;-<span class="st"> </span><span class="kw">predict</span>(bst3, test<span class="op">$</span>data)</a>
-<a class="sourceLine" id="cb59-4" data-line-number="4"></a>
-<a class="sourceLine" id="cb59-5" data-line-number="5"><span class="co"># pred2 should be identical to pred</span></a>
-<a class="sourceLine" id="cb59-6" data-line-number="6"><span class="kw">print</span>(<span class="kw">paste</span>(<span class="st">&quot;sum(abs(pred3-pred))=&quot;</span>, <span class="kw">sum</span>(<span class="kw">abs</span>(pred2<span class="op">-</span>pred))))</a></code></pre></div>
+<div class="sourceCode" id="cb60"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb60-1" data-line-number="1"><span class="co"># load binary model to R</span></a>
+<a class="sourceLine" id="cb60-2" data-line-number="2">bst3 &lt;-<span class="st"> </span><span class="kw">xgb.load</span>(rawVec)</a>
+<a class="sourceLine" id="cb60-3" data-line-number="3">pred3 &lt;-<span class="st"> </span><span class="kw">predict</span>(bst3, test<span class="op">$</span>data)</a>
+<a class="sourceLine" id="cb60-4" data-line-number="4"></a>
+<a class="sourceLine" id="cb60-5" data-line-number="5"><span class="co"># pred2 should be identical to pred</span></a>
+<a class="sourceLine" id="cb60-6" data-line-number="6"><span class="kw">print</span>(<span class="kw">paste</span>(<span class="st">&quot;sum(abs(pred3-pred))=&quot;</span>, <span class="kw">sum</span>(<span class="kw">abs</span>(pred2<span class="op">-</span>pred))))</a></code></pre></div>
 <pre><code>## [1] &quot;sum(abs(pred3-pred))= 0&quot;</code></pre>
 <blockquote>
 <p>Again <code>0</code>? It seems that <code>XGBoost</code> works pretty well!</p>
