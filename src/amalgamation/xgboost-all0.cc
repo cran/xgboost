@@ -14,6 +14,7 @@
 #include "../src/metric/elementwise_metric.cc"
 #include "../src/metric/multiclass_metric.cc"
 #include "../src/metric/rank_metric.cc"
+#include "../src/metric/auc.cc"
 #include "../src/metric/survival_metric.cc"
 
 // objectives
@@ -67,6 +68,7 @@
 // global
 #include "../src/learner.cc"
 #include "../src/logging.cc"
+#include "../src/global_config.cc"
 #include "../src/common/common.cc"
 #include "../src/common/random.cc"
 #include "../src/common/charconv.cc"

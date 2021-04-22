@@ -362,7 +362,7 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 <a class="sourceLine" id="cb6-23" data-line-number="23">  <span class="dt">missing =</span> <span class="ot">NA</span>,</a>
 <a class="sourceLine" id="cb6-24" data-line-number="24">  <span class="dt">max_depth =</span> <span class="dv">1</span></a>
 <a class="sourceLine" id="cb6-25" data-line-number="25">)</a></code></pre></div>
-<pre><code>## [00:22:08] WARNING: amalgamation/../src/learner.cc:1061: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+<pre><code>## [06:09:45] WARNING: amalgamation/../src/learner.cc:1095: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
 ## [1]  train-logloss:0.505253</code></pre>
 </div>
 <div id="comparing-results" class="section level2">
@@ -374,7 +374,7 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 <a class="sourceLine" id="cb8-3" data-line-number="3">node &lt;-<span class="st"> </span>bst_from_json[[<span class="dv">1</span>]]</a>
 <a class="sourceLine" id="cb8-4" data-line-number="4"><span class="kw">cat</span>(bst_json)</a></code></pre></div>
 <pre><code>## [
-##   { &quot;nodeid&quot;: 0, &quot;depth&quot;: 0, &quot;split&quot;: 0, &quot;split_condition&quot;: 20180132, &quot;yes&quot;: 1, &quot;no&quot;: 2, &quot;missing&quot;: 1 , &quot;children&quot;: [
+##   { &quot;nodeid&quot;: 0, &quot;depth&quot;: 0, &quot;split&quot;: &quot;0&quot;, &quot;split_condition&quot;: 20180132, &quot;yes&quot;: 1, &quot;no&quot;: 2, &quot;missing&quot;: 1 , &quot;children&quot;: [
 ##     { &quot;nodeid&quot;: 1, &quot;leaf&quot;: 0.360000014 }, 
 ##     { &quot;nodeid&quot;: 2, &quot;leaf&quot;: -0.450000018 }
 ##   ]}
