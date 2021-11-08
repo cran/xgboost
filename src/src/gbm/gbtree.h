@@ -9,6 +9,7 @@
 
 #include <dmlc/omp.h>
 
+#include <algorithm>
 #include <vector>
 #include <map>
 #include <memory>
@@ -291,7 +292,76 @@ class GBTree : public GradientBooster {
     } else {
       bool success = this->GetPredictor()->InplacePredict(
           x, p_m, model_, missing, out_preds, tree_begin, tree_end);
-      CHECK(success) << msg;
+      CHECK(success) << msg << std::endl
+                     << "Current Predictor: "
+                     << (tparam_.predictor == PredictorType::kCPUPredictor
+                             ? "cpu_predictor"
+                             : "gpu_predictor");
+    }
+  }
+
+  void FeatureScore(std::string const& importance_type, common::Span<int32_t const> trees,
+                    std::vector<bst_feature_t>* features,
+                    std::vector<float>* scores) const override {
+    // Because feature with no importance doesn't appear in the return value so
+    // we need to set up another pair of vectors to store the values during
+    // computation.
+    std::vector<size_t> split_counts(this->model_.learner_model_param->num_feature, 0);
+    std::vector<float> gain_map(this->model_.learner_model_param->num_feature, 0);
+    std::vector<int32_t> tree_idx;
+    if (trees.empty()) {
+      tree_idx.resize(this->model_.trees.size());
+      std::iota(tree_idx.begin(), tree_idx.end(), 0);
+      trees = common::Span<int32_t const>(tree_idx);
+    }
+
+    auto total_n_trees = model_.trees.size();
+    auto add_score = [&](auto fn) {
+      for (auto idx : trees) {
+        CHECK_LE(idx, total_n_trees) << "Invalid tree index.";
+        auto const& p_tree = model_.trees[idx];
+        p_tree->WalkTree([&](bst_node_t nidx) {
+          auto const& node = (*p_tree)[nidx];
+          if (!node.IsLeaf()) {
+            split_counts[node.SplitIndex()]++;
+            fn(p_tree, nidx, node.SplitIndex());
+          }
+          return true;
+        });
+      }
+    };
+
+    if (importance_type == "weight") {
+      add_score([&](auto const &p_tree, bst_node_t, bst_feature_t split) {
+        gain_map[split] = split_counts[split];
+      });
+    } else if (importance_type == "gain" || importance_type == "total_gain") {
+      add_score([&](auto const &p_tree, bst_node_t nidx, bst_feature_t split) {
+        gain_map[split] += p_tree->Stat(nidx).loss_chg;
+      });
+    } else if (importance_type == "cover" || importance_type == "total_cover") {
+      add_score([&](auto const &p_tree, bst_node_t nidx, bst_feature_t split) {
+        gain_map[split] += p_tree->Stat(nidx).sum_hess;
+      });
+    } else {
+      LOG(FATAL)
+          << "Unknown feature importance type, expected one of: "
+          << R"({"weight", "total_gain", "total_cover", "gain", "cover"}, got: )"
+          << importance_type;
+    }
+    if (importance_type == "gain" || importance_type == "cover") {
+      for (size_t i = 0; i < gain_map.size(); ++i) {
+        gain_map[i] /= std::max(1.0f, static_cast<float>(split_counts[i]));
+      }
+    }
+
+    features->clear();
+    scores->clear();
+    for (size_t i = 0; i < split_counts.size(); ++i) {
+      if (split_counts[i] != 0) {
+        features->push_back(i);
+        scores->push_back(gain_map[i]);
+      }
     }
   }
 

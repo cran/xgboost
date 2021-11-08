@@ -42,7 +42,7 @@ namespace data {
  * This abstraction allows us to read through different sparse matrix formats
  * using the same interface. In particular we can write a DMatrix constructor
  * that uses the same code to construct itself from a CSR matrix, CSC matrix,
- * dense matrix, csv, libsvm file, or potentially other formats. To see why this
+ * dense matrix, CSV, LIBSVM file, or potentially other formats. To see why this
  * is necessary, imagine we have 5 external matrix formats and 5 internal
  * DMatrix types where each DMatrix needs a custom constructor for each possible
  * input. The number of constructors is 5*5=25. Using an abstraction over the
@@ -231,6 +231,10 @@ class DenseAdapter : public detail::SingleBatchDataIter<DenseAdapterBatch> {
 };
 
 class ArrayAdapterBatch : public detail::NoMetaInfo {
+ public:
+  static constexpr bool kIsRowMajor = true;
+
+ private:
   ArrayInterface array_interface_;
 
   class Line {
@@ -253,6 +257,10 @@ class ArrayAdapterBatch : public detail::NoMetaInfo {
   Line const GetLine(size_t idx) const {
     return Line{array_interface_, idx};
   }
+
+  size_t NumRows() const { return array_interface_.num_rows; }
+  size_t NumCols() const { return array_interface_.num_cols; }
+  size_t Size() const { return this->NumRows(); }
 
   explicit ArrayAdapterBatch(ArrayInterface array_interface)
       : array_interface_{std::move(array_interface)} {}
@@ -283,6 +291,7 @@ class CSRArrayAdapterBatch : public detail::NoMetaInfo {
   ArrayInterface indptr_;
   ArrayInterface indices_;
   ArrayInterface values_;
+  bst_feature_t n_features_;
 
   class Line {
     ArrayInterface indices_;
@@ -307,22 +316,26 @@ class CSRArrayAdapterBatch : public detail::NoMetaInfo {
   };
 
  public:
+  static constexpr bool kIsRowMajor = true;
+
+ public:
   CSRArrayAdapterBatch() = default;
   CSRArrayAdapterBatch(ArrayInterface indptr, ArrayInterface indices,
-                       ArrayInterface values)
+                       ArrayInterface values, bst_feature_t n_features)
       : indptr_{std::move(indptr)}, indices_{std::move(indices)},
-        values_{std::move(values)} {
+        values_{std::move(values)}, n_features_{n_features} {
     indptr_.AsColumnVector();
     values_.AsColumnVector();
     indices_.AsColumnVector();
   }
 
-  size_t Size() const {
+  size_t NumRows() const {
     size_t size = indptr_.num_rows * indptr_.num_cols;
     size = size == 0 ? 0 : size - 1;
     return size;
   }
-  static constexpr bool kIsRowMajor = true;
+  size_t NumCols() const { return n_features_; }
+  size_t Size() const { return this->NumRows(); }
 
   Line const GetLine(size_t idx) const {
     auto begin_offset = indptr_.GetElement<size_t>(idx, 0);
@@ -351,7 +364,8 @@ class CSRArrayAdapter : public detail::SingleBatchDataIter<CSRArrayAdapterBatch>
   CSRArrayAdapter(StringView indptr, StringView indices, StringView values,
                   size_t num_cols)
       : indptr_{indptr}, indices_{indices}, values_{values}, num_cols_{num_cols} {
-    batch_ = CSRArrayAdapterBatch{indptr_, indices_, values_};
+    batch_ = CSRArrayAdapterBatch{indptr_, indices_, values_,
+                                  static_cast<bst_feature_t>(num_cols_)};
   }
 
   CSRArrayAdapterBatch const& Value() const override {
@@ -736,7 +750,7 @@ class IteratorAdapter : public dmlc::DataIter<FileAdapterBatch> {
 
   size_t columns_;
   size_t row_offset_;
-  // at the beinning.
+  // at the beginning.
   bool at_first_;
   // handle to the iterator,
   DataIterHandle data_handle_;

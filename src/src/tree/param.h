@@ -76,12 +76,10 @@ struct TrainParam : public XGBoostParameter<TrainParam> {
   // the criteria to use for ranking splits
   std::string split_evaluator;
 
-  // ------ From cpu quantile histogram -------.
+  // ------ From CPU quantile histogram -------.
   // percentage threshold for treating a feature as sparse
   // e.g. 0.2 indicates a feature with fewer than 20% nonzeros is considered sparse
   double sparse_threshold;
-  // use feature grouping? (default yes)
-  int enable_feature_grouping;
   // when grouping features, how many "conflicts" to allow.
   // conflict is when an instance has nonzero values for two or more features
   // default is 0, meaning features should be strictly complementary
@@ -199,9 +197,6 @@ struct TrainParam : public XGBoostParameter<TrainParam> {
     // ------ From cpu quantile histogram -------.
     DMLC_DECLARE_FIELD(sparse_threshold).set_range(0, 1.0).set_default(0.2)
         .describe("percentage threshold for treating a feature as sparse");
-    DMLC_DECLARE_FIELD(enable_feature_grouping).set_lower_bound(0).set_default(0)
-        .describe("if >0, enable feature grouping to ameliorate work imbalance "
-                  "among worker threads");
     DMLC_DECLARE_FIELD(max_conflict_rate).set_range(0, 1.0).set_default(0)
         .describe("when grouping features, how many \"conflicts\" to allow."
        "conflict is when an instance has nonzero values for two or more features."
@@ -316,7 +311,7 @@ XGBOOST_DEVICE inline T CalcGain(const TrainingParams &p, StatT stat) {
   return CalcGain(p, stat.GetGrad(), stat.GetHess());
 }
 
-// Used in gpu code where GradientPair is used for gradient sum, not GradStats.
+// Used in GPU code where GradientPair is used for gradient sum, not GradStats.
 template <typename TrainingParams, typename GpairT>
 XGBOOST_DEVICE inline float CalcWeight(const TrainingParams &p, GpairT sum_grad) {
   return CalcWeight(p, sum_grad.GetGrad(), sum_grad.GetHess());
@@ -484,7 +479,7 @@ using SplitEntry = SplitEntryContainer<GradStats>;
 
 /*
  * \brief Parse the interaction constraints from string.
- * \param constraint_str String storing the interfaction constraints:
+ * \param constraint_str String storing the interaction constraints:
  *
  *  Example input string:
  *

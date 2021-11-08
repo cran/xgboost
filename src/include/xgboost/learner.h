@@ -52,9 +52,9 @@ struct XGBAPIThreadLocalEntry {
   std::vector<bst_float> ret_vec_float;
   /*! \brief temp variable of gradient pairs. */
   std::vector<GradientPair> tmp_gpair;
-  /*! \brief Temp variable for returing prediction result. */
+  /*! \brief Temp variable for returning prediction result. */
   PredictionCacheEntry prediction_entry;
-  /*! \brief Temp variable for returing prediction shape. */
+  /*! \brief Temp variable for returning prediction shape. */
   std::vector<bst_ulong> prediction_shape;
 };
 
@@ -151,6 +151,14 @@ class Learner : public Model, public Configurable, public dmlc::Serializable {
                               float missing,
                               HostDeviceVector<bst_float> **out_preds,
                               uint32_t layer_begin, uint32_t layer_end) = 0;
+
+  /*!
+   * \brief Calculate feature score.  See doc in C API for outputs.
+   */
+  virtual void CalcFeatureScore(std::string const& importance_type,
+                                common::Span<int32_t const> trees,
+                                std::vector<bst_feature_t>* features,
+                                std::vector<float>* scores) = 0;
 
   /*
    * \brief Get number of boosted rounds from gradient booster.

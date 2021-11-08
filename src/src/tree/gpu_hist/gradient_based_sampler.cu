@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <utility>
 
 #include "../../common/compressed_iterator.h"
 #include "../../common/random.h"
@@ -131,7 +132,7 @@ class PoissonSampling : public thrust::binary_function<GradientPair, size_t, Gra
       if (rnd_(i) <= p) {
         return gpair / p;
       } else {
-        return GradientPair();
+        return {};
       }
     }
   }
@@ -143,13 +144,13 @@ class PoissonSampling : public thrust::binary_function<GradientPair, size_t, Gra
   CombineGradientPair combine_;
 };
 
-NoSampling::NoSampling(EllpackPageImpl* page) : page_(page) {}
+NoSampling::NoSampling(EllpackPageImpl const* page) : page_(page) {}
 
 GradientBasedSample NoSampling::Sample(common::Span<GradientPair> gpair, DMatrix* dmat) {
   return {dmat->Info().num_row_, page_, gpair};
 }
 
-ExternalMemoryNoSampling::ExternalMemoryNoSampling(EllpackPageImpl* page,
+ExternalMemoryNoSampling::ExternalMemoryNoSampling(EllpackPageImpl const* page,
                                                    size_t n_rows,
                                                    const BatchParam& batch_param)
     : batch_param_(batch_param),
@@ -171,7 +172,7 @@ GradientBasedSample ExternalMemoryNoSampling::Sample(common::Span<GradientPair> 
   return {dmat->Info().num_row_, page_.get(), gpair};
 }
 
-UniformSampling::UniformSampling(EllpackPageImpl* page, float subsample)
+UniformSampling::UniformSampling(EllpackPageImpl const* page, float subsample)
     : page_(page), subsample_(subsample) {}
 
 GradientBasedSample UniformSampling::Sample(common::Span<GradientPair> gpair, DMatrix* dmat) {
@@ -183,12 +184,12 @@ GradientBasedSample UniformSampling::Sample(common::Span<GradientPair> gpair, DM
   return {dmat->Info().num_row_, page_, gpair};
 }
 
-ExternalMemoryUniformSampling::ExternalMemoryUniformSampling(EllpackPageImpl* page,
+ExternalMemoryUniformSampling::ExternalMemoryUniformSampling(EllpackPageImpl const* page,
                                                              size_t n_rows,
-                                                             const BatchParam& batch_param,
+                                                             BatchParam batch_param,
                                                              float subsample)
     : original_page_(page),
-      batch_param_(batch_param),
+      batch_param_(std::move(batch_param)),
       subsample_(subsample),
       sample_row_index_(n_rows) {}
 
@@ -231,7 +232,7 @@ GradientBasedSample ExternalMemoryUniformSampling::Sample(common::Span<GradientP
   return {sample_rows, page_.get(), dh::ToSpan(gpair_)};
 }
 
-GradientBasedSampling::GradientBasedSampling(EllpackPageImpl* page,
+GradientBasedSampling::GradientBasedSampling(EllpackPageImpl const* page,
                                              size_t n_rows,
                                              const BatchParam&,
                                              float subsample)
@@ -257,12 +258,12 @@ GradientBasedSample GradientBasedSampling::Sample(common::Span<GradientPair> gpa
 }
 
 ExternalMemoryGradientBasedSampling::ExternalMemoryGradientBasedSampling(
-    EllpackPageImpl* page,
+    EllpackPageImpl const* page,
     size_t n_rows,
-    const BatchParam& batch_param,
+    BatchParam batch_param,
     float subsample)
     : original_page_(page),
-      batch_param_(batch_param),
+      batch_param_(std::move(batch_param)),
       subsample_(subsample),
       threshold_(n_rows + 1, 0.0f),
       grad_sum_(n_rows, 0.0f),
@@ -313,7 +314,7 @@ GradientBasedSample ExternalMemoryGradientBasedSampling::Sample(common::Span<Gra
   return {sample_rows, page_.get(), dh::ToSpan(gpair_)};
 }
 
-GradientBasedSampler::GradientBasedSampler(EllpackPageImpl* page,
+GradientBasedSampler::GradientBasedSampler(EllpackPageImpl const* page,
                                            size_t n_rows,
                                            const BatchParam& batch_param,
                                            float subsample,

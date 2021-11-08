@@ -396,7 +396,7 @@ class RegTree : public Model {
    * \brief Compares whether 2 trees are equal from a user's perspective.  The equality
    *        compares only non-deleted nodes.
    *
-   * \parm b The other tree.
+   * \param b The other tree.
    */
   bool Equal(const RegTree& b) const;
 
@@ -444,6 +444,10 @@ class RegTree : public Model {
                          bst_float base_weight, bst_float left_leaf_weight,
                          bst_float right_leaf_weight, bst_float loss_change,
                          float sum_hess, float left_sum, float right_sum);
+
+  bool HasCategoricalSplit() const {
+    return !split_categories_.empty();
+  }
 
   /*!
    * \brief get current depth
@@ -537,13 +541,6 @@ class RegTree : public Model {
     std::vector<Entry> data_;
     bool has_missing_;
   };
-  /*!
-   * \brief get the leaf index
-   * \param feat dense feature vector, if the feature is missing the field is set to NaN
-   * \return the leaf index of the given feature
-   */
-  template <bool has_missing = true>
-  int GetLeafIndex(const FVec& feat) const;
 
   /*!
    * \brief calculate the feature contributions (https://arxiv.org/abs/1706.06060) for the tree
@@ -553,6 +550,7 @@ class RegTree : public Model {
    * \param condition_feature the index of the feature to fix
    */
   void CalculateContributions(const RegTree::FVec& feat,
+                              std::vector<float>* mean_values,
                               bst_float* out_contribs, int condition = 0,
                               unsigned condition_feature = 0) const;
   /*!
@@ -569,7 +567,7 @@ class RegTree : public Model {
    * \param condition_feature the index of the feature to fix
    * \param condition_fraction what fraction of the current weight matches our conditioning feature
    */
-  void TreeShap(const RegTree::FVec& feat, bst_float* phi, unsigned node_index,
+  void TreeShap(const RegTree::FVec& feat, bst_float* phi, bst_node_t node_index,
                 unsigned unique_depth, PathElement* parent_unique_path,
                 bst_float parent_zero_fraction, bst_float parent_one_fraction,
                 int parent_feature_index, int condition,
@@ -581,15 +579,8 @@ class RegTree : public Model {
    * \param out_contribs output vector to hold the contributions
    */
   void CalculateContributionsApprox(const RegTree::FVec& feat,
+                                    std::vector<float>* mean_values,
                                     bst_float* out_contribs) const;
-  /*!
-   * \brief get next position of the tree given current pid
-   * \param pid Current node id.
-   * \param fvalue feature value if not missing.
-   * \param is_unknown Whether current required feature is missing.
-   */
-  template <bool has_missing = true>
-  inline int GetNext(int pid, bst_float fvalue, bool is_unknown) const;
   /*!
    * \brief dump the model in the requested format as a text string
    * \param fmap feature map that may help give interpretations of feature
@@ -600,10 +591,6 @@ class RegTree : public Model {
   std::string DumpModel(const FeatureMap& fmap,
                         bool with_stats,
                         std::string format) const;
-  /*!
-   * \brief calculate the mean value for each node, required for feature contributions
-   */
-  void FillNodeMeanValues();
   /*!
    * \brief Get split type for a node.
    * \param nidx Index of node.
@@ -627,6 +614,20 @@ class RegTree : public Model {
     size_t size {0};
   };
 
+  struct CategoricalSplitMatrix {
+    common::Span<FeatureType const> split_type;
+    common::Span<uint32_t const> categories;
+    common::Span<Segment const> node_ptr;
+  };
+
+  CategoricalSplitMatrix GetCategoriesMatrix() const {
+    CategoricalSplitMatrix view;
+    view.split_type = common::Span<FeatureType const>(this->GetSplitTypes());
+    view.categories = this->GetSplitCategories();
+    view.node_ptr = common::Span<Segment const>(split_categories_segments_);
+    return view;
+  }
+
  private:
   void LoadCategoricalSplit(Json const& in);
   void SaveCategoricalSplit(Json* p_out) const;
@@ -636,7 +637,6 @@ class RegTree : public Model {
   std::vector<int>  deleted_nodes_;
   // stats of nodes
   std::vector<RTreeNodeStat> stats_;
-  std::vector<bst_float> node_mean_values_;
   std::vector<FeatureType> split_types_;
 
   // Categories for each internal node.
@@ -677,7 +677,6 @@ class RegTree : public Model {
     nodes_[nid].MarkDelete();
     ++param.num_deleted;
   }
-  bst_float FillNodeMeanValue(int nid);
 };
 
 inline void RegTree::FVec::Init(size_t size) {
@@ -724,38 +723,5 @@ inline bool RegTree::FVec::IsMissing(size_t i) const {
 inline bool RegTree::FVec::HasMissing() const {
   return has_missing_;
 }
-
-template <bool has_missing>
-inline int RegTree::GetLeafIndex(const RegTree::FVec& feat) const {
-  bst_node_t nid = 0;
-  while (!(*this)[nid].IsLeaf()) {
-    unsigned split_index = (*this)[nid].SplitIndex();
-    nid = this->GetNext<has_missing>(nid, feat.GetFvalue(split_index),
-                                     has_missing && feat.IsMissing(split_index));
-  }
-  return nid;
-}
-
-/*! \brief get next position of the tree given current pid */
-template <bool has_missing>
-inline int RegTree::GetNext(int pid, bst_float fvalue, bool is_unknown) const {
-  if (has_missing) {
-    if (is_unknown) {
-      return (*this)[pid].DefaultChild();
-    } else {
-      if (fvalue < (*this)[pid].SplitCond()) {
-        return (*this)[pid].LeftChild();
-      } else {
-        return (*this)[pid].RightChild();
-      }
-    }
-  } else {
-    // 35% speed up due to reduced miss branch predictions
-    // The following expression returns the left child if (fvalue < split_cond);
-    // the right child otherwise.
-    return (*this)[pid].LeftChild() + !(fvalue < (*this)[pid].SplitCond());
-  }
-}
-
 }  // namespace xgboost
 #endif  // XGBOOST_TREE_MODEL_H_

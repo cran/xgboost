@@ -1,3 +1,4 @@
+library(testthat)
 context('Test helper functions')
 
 require(xgboost)
@@ -110,7 +111,7 @@ test_that("predict feature contributions works", {
   pred <- predict(bst.GLM, sparse_matrix, outputmargin = TRUE)
   expect_lt(max(abs(rowSums(pred_contr) - pred)), 1e-5)
   # manual calculation of linear terms
-  coefs <- xgb.dump(bst.GLM)[-c(1, 2, 4)] %>% as.numeric
+  coefs <- as.numeric(xgb.dump(bst.GLM)[-c(1, 2, 4)])
   coefs <- c(coefs[-1], coefs[1]) # intercept must be the last
   pred_contr_manual <- sweep(cbind(sparse_matrix, 1), 2, coefs, FUN = "*")
   expect_equal(as.numeric(pred_contr), as.numeric(pred_contr_manual),
@@ -130,7 +131,11 @@ test_that("predict feature contributions works", {
   pred <- predict(mbst.GLM, as.matrix(iris[, -5]), outputmargin = TRUE, reshape = TRUE)
   pred_contr <- predict(mbst.GLM, as.matrix(iris[, -5]), predcontrib = TRUE)
   expect_length(pred_contr, 3)
-  coefs_all <- xgb.dump(mbst.GLM)[-c(1, 2, 6)] %>% as.numeric %>% matrix(ncol = 3, byrow = TRUE)
+  coefs_all <- matrix(
+    data = as.numeric(xgb.dump(mbst.GLM)[-c(1, 2, 6)]),
+    ncol = 3,
+    byrow = TRUE
+  )
   for (g in seq_along(pred_contr)) {
     expect_equal(colnames(pred_contr[[g]]), c(colnames(iris[, -5]), "BIAS"))
     expect_lt(max(abs(rowSums(pred_contr[[g]]) - pred[, g])), float_tolerance)
@@ -238,12 +243,13 @@ if (grepl('Windows', Sys.info()[['sysname']]) ||
 test_that("xgb.Booster serializing as R object works", {
   saveRDS(bst.Tree, 'xgb.model.rds')
   bst <- readRDS('xgb.model.rds')
-  if (file.exists('xgb.model.rds')) file.remove('xgb.model.rds')
   dtrain <- xgb.DMatrix(sparse_matrix, label = label)
   expect_equal(predict(bst.Tree, dtrain), predict(bst, dtrain), tolerance = float_tolerance)
   expect_equal(xgb.dump(bst.Tree), xgb.dump(bst))
   xgb.save(bst, 'xgb.model')
   if (file.exists('xgb.model')) file.remove('xgb.model')
+  bst <- readRDS('xgb.model.rds')
+  if (file.exists('xgb.model.rds')) file.remove('xgb.model.rds')
   nil_ptr <- new("externalptr")
   class(nil_ptr) <- "xgb.Booster.handle"
   expect_true(identical(bst$handle, nil_ptr))
@@ -305,7 +311,35 @@ test_that("xgb.importance works with and without feature names", {
   # for multiclass
   imp.Tree <- xgb.importance(model = mbst.Tree)
   expect_equal(dim(imp.Tree), c(4, 4))
-  xgb.importance(model = mbst.Tree, trees = seq(from = 0, by = nclass, length.out = nrounds))
+
+  trees <- seq(from = 0, by = 2, length.out = 2)
+  importance <- xgb.importance(feature_names = feature.names, model = bst.Tree, trees = trees)
+
+  importance_from_dump <- function() {
+    model_text_dump <- xgb.dump(model = bst.Tree, with_stats = TRUE, trees = trees)
+    imp <- xgb.model.dt.tree(
+      feature_names = feature.names,
+      text = model_text_dump,
+      trees = trees
+    )[
+      Feature != "Leaf", .(
+        Gain = sum(Quality),
+        Cover = sum(Cover),
+        Frequency = .N
+      ),
+      by = Feature
+    ][
+      , `:=`(
+        Gain = Gain / sum(Gain),
+        Cover = Cover / sum(Cover),
+        Frequency = Frequency / sum(Frequency)
+      )
+    ][
+      order(Gain, decreasing = TRUE)
+    ]
+    imp
+  }
+  expect_equal(importance_from_dump(), importance, tolerance = 1e-6)
 })
 
 test_that("xgb.importance works with GLM model", {

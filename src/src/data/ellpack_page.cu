@@ -122,6 +122,7 @@ EllpackPageImpl::EllpackPageImpl(DMatrix* dmat, const BatchParam& param)
   dmat->Info().feature_types.SetDevice(param.gpu_id);
   auto ft = dmat->Info().feature_types.ConstDeviceSpan();
   monitor_.Start("BinningCompression");
+  CHECK(dmat->SingleColBlock());
   for (const auto& batch : dmat->GetBatches<SparsePage>()) {
     CreateHistIndices(param.gpu_id, batch, ft);
   }
@@ -134,17 +135,20 @@ struct WriteCompressedEllpackFunctor {
                                 const common::CompressedBufferWriter& writer,
                                 AdapterBatchT batch,
                                 EllpackDeviceAccessor accessor,
+                                common::Span<FeatureType const> feature_types,
                                 const data::IsValidFunctor& is_valid)
       : d_buffer(buffer),
       writer(writer),
       batch(std::move(batch)),
       accessor(std::move(accessor)),
+      feature_types(std::move(feature_types)),
       is_valid(is_valid) {}
 
   common::CompressedByteT* d_buffer;
   common::CompressedBufferWriter writer;
   AdapterBatchT batch;
   EllpackDeviceAccessor accessor;
+  common::Span<FeatureType const> feature_types;
   data::IsValidFunctor is_valid;
 
   using Tuple = thrust::tuple<size_t, size_t, size_t>;
@@ -154,7 +158,12 @@ struct WriteCompressedEllpackFunctor {
       // -1 because the scan is inclusive
       size_t output_position =
           accessor.row_stride * e.row_idx + out.get<1>() - 1;
-      auto bin_idx = accessor.SearchBin(e.value, e.column_idx);
+      uint32_t bin_idx = 0;
+      if (common::IsCat(feature_types, e.column_idx)) {
+        bin_idx = accessor.SearchBin<true>(e.value, e.column_idx);
+      } else {
+        bin_idx = accessor.SearchBin<false>(e.value, e.column_idx);
+      }
       writer.AtomicWriteSymbol(d_buffer, bin_idx, output_position);
     }
     return 0;
@@ -174,20 +183,14 @@ struct TupleScanOp {
   }
 };
 
-// Change the value type of thrust discard iterator so we can use it with cub
-template <typename T>
-class TypedDiscard : public thrust::discard_iterator<T> {
- public:
-  using value_type = T;  // NOLINT
-};
-
 // Here the data is already correctly ordered and simply needs to be compacted
 // to remove missing data
 template <typename AdapterBatchT>
-void CopyDataToEllpack(const AdapterBatchT& batch, EllpackPageImpl* dst,
-                       int device_idx, float missing) {
+void CopyDataToEllpack(const AdapterBatchT &batch,
+                       common::Span<FeatureType const> feature_types,
+                       EllpackPageImpl *dst, int device_idx, float missing) {
   // Some witchcraft happens here
-  // The goal is to copy valid elements out of the input to an ellpack matrix
+  // The goal is to copy valid elements out of the input to an ELLPACK matrix
   // with a given row stride, using no extra working memory Standard stream
   // compaction needs to be modified to do this, so we manually define a
   // segmented stream compaction via operators on an inclusive scan. The output
@@ -220,8 +223,9 @@ void CopyDataToEllpack(const AdapterBatchT& batch, EllpackPageImpl* dst,
 
   // We redirect the scan output into this functor to do the actual writing
   WriteCompressedEllpackFunctor<AdapterBatchT> functor(
-      d_compressed_buffer, writer, batch, device_accessor, is_valid);
-  TypedDiscard<Tuple> discard;
+      d_compressed_buffer, writer, batch, device_accessor, feature_types,
+      is_valid);
+  dh::TypedDiscard<Tuple> discard;
   thrust::transform_output_iterator<
     WriteCompressedEllpackFunctor<AdapterBatchT>, decltype(discard)>
       out(discard, functor);
@@ -247,38 +251,38 @@ void WriteNullValues(EllpackPageImpl* dst, int device_idx,
   common::CompressedBufferWriter writer(device_accessor.NumSymbols());
   auto d_compressed_buffer = dst->gidx_buffer.DevicePointer();
   auto row_stride = dst->row_stride;
-  dh::LaunchN(device_idx, row_stride * dst->n_rows, [=] __device__(size_t idx) {
-      auto writer_non_const =
-          writer;  // For some reason this variable gets captured as const
-      size_t row_idx = idx / row_stride;
-      size_t row_offset = idx % row_stride;
-      if (row_offset >= row_counts[row_idx]) {
-        writer_non_const.AtomicWriteSymbol(d_compressed_buffer,
-                                           device_accessor.NullValue(), idx);
-      }
-    });
+  dh::LaunchN(row_stride * dst->n_rows, [=] __device__(size_t idx) {
+    // For some reason this variable got captured as const
+    auto writer_non_const = writer;
+    size_t row_idx = idx / row_stride;
+    size_t row_offset = idx % row_stride;
+    if (row_offset >= row_counts[row_idx]) {
+      writer_non_const.AtomicWriteSymbol(d_compressed_buffer,
+                                         device_accessor.NullValue(), idx);
+    }
+  });
 }
 
 template <typename AdapterBatch>
 EllpackPageImpl::EllpackPageImpl(AdapterBatch batch, float missing, int device,
                                  bool is_dense, int nthread,
                                  common::Span<size_t> row_counts_span,
+                                 common::Span<FeatureType const> feature_types,
                                  size_t row_stride, size_t n_rows, size_t n_cols,
                                  common::HistogramCuts const& cuts) {
   dh::safe_cuda(cudaSetDevice(device));
 
   *this = EllpackPageImpl(device, cuts, is_dense, row_stride, n_rows);
-  CopyDataToEllpack(batch, this, device, missing);
+  CopyDataToEllpack(batch, feature_types, this, device, missing);
   WriteNullValues(this, device, row_counts_span);
 }
 
-#define ELLPACK_BATCH_SPECIALIZE(__BATCH_T)                             \
-  template EllpackPageImpl::EllpackPageImpl(                            \
-      __BATCH_T batch, float missing, int device,                       \
-      bool is_dense, int nthread,                                       \
-      common::Span<size_t> row_counts_span,                             \
-      size_t row_stride, size_t n_rows, size_t n_cols,                  \
-      common::HistogramCuts const& cuts);
+#define ELLPACK_BATCH_SPECIALIZE(__BATCH_T)                                    \
+  template EllpackPageImpl::EllpackPageImpl(                                   \
+      __BATCH_T batch, float missing, int device, bool is_dense, int nthread,  \
+      common::Span<size_t> row_counts_span,                                    \
+      common::Span<FeatureType const> feature_types, size_t row_stride,        \
+      size_t n_rows, size_t n_cols, common::HistogramCuts const &cuts);
 
 ELLPACK_BATCH_SPECIALIZE(data::CudfAdapterBatch)
 ELLPACK_BATCH_SPECIALIZE(data::CupyAdapterBatch)
@@ -291,9 +295,8 @@ struct CopyPage {
   // The number of elements to skip.
   size_t offset;
 
-  CopyPage(EllpackPageImpl* dst, EllpackPageImpl* src, size_t offset)
-      : cbw{dst->NumSymbols()},
-        dst_data_d{dst->gidx_buffer.DevicePointer()},
+  CopyPage(EllpackPageImpl *dst, EllpackPageImpl const *src, size_t offset)
+      : cbw{dst->NumSymbols()}, dst_data_d{dst->gidx_buffer.DevicePointer()},
         src_iterator_d{src->gidx_buffer.DevicePointer(), src->NumSymbols()},
         offset(offset) {}
 
@@ -304,7 +307,8 @@ struct CopyPage {
 };
 
 // Copy the data from the given EllpackPage to the current page.
-size_t EllpackPageImpl::Copy(int device, EllpackPageImpl* page, size_t offset) {
+size_t EllpackPageImpl::Copy(int device, EllpackPageImpl const *page,
+                             size_t offset) {
   monitor_.Start("Copy");
   size_t num_elements = page->n_rows * page->row_stride;
   CHECK_EQ(row_stride, page->row_stride);
@@ -316,7 +320,7 @@ size_t EllpackPageImpl::Copy(int device, EllpackPageImpl* page, size_t offset) {
   }
   gidx_buffer.SetDevice(device);
   page->gidx_buffer.SetDevice(device);
-  dh::LaunchN(device, num_elements, CopyPage(this, page, offset));
+  dh::LaunchN(num_elements, CopyPage(this, page, offset));
   monitor_.Stop("Copy");
   return num_elements;
 }
@@ -341,7 +345,7 @@ struct CompactPage {
   size_t base_rowid;
   size_t row_stride;
 
-  CompactPage(EllpackPageImpl* dst, EllpackPageImpl* src,
+  CompactPage(EllpackPageImpl* dst, EllpackPageImpl const* src,
               common::Span<size_t> row_indexes)
       : cbw{dst->NumSymbols()},
         dst_data_d{dst->gidx_buffer.DevicePointer()},
@@ -364,7 +368,7 @@ struct CompactPage {
 };
 
 // Compacts the data from the given EllpackPage into the current page.
-void EllpackPageImpl::Compact(int device, EllpackPageImpl* page,
+void EllpackPageImpl::Compact(int device, EllpackPageImpl const* page,
                               common::Span<size_t> row_indexes) {
   monitor_.Start("Compact");
   CHECK_EQ(row_stride, page->row_stride);
@@ -372,7 +376,7 @@ void EllpackPageImpl::Compact(int device, EllpackPageImpl* page,
   CHECK_LE(page->base_rowid + page->n_rows, row_indexes.size());
   gidx_buffer.SetDevice(device);
   page->gidx_buffer.SetDevice(device);
-  dh::LaunchN(device, page->n_rows, CompactPage(this, page, row_indexes));
+  dh::LaunchN(page->n_rows, CompactPage(this, page, row_indexes));
   monitor_.Stop("Compact");
 }
 
@@ -449,7 +453,7 @@ void EllpackPageImpl::CreateHistIndices(int device,
         gidx_buffer.DevicePointer(), row_ptrs.data().get(),
         entries_d.data().get(), device_accessor.gidx_fvalue_map.data(),
         device_accessor.feature_segments.data(), feature_types,
-        row_batch.base_rowid + batch_row_begin, batch_nrows, row_stride,
+        batch_row_begin, batch_nrows, row_stride,
         null_gidx_value);
   }
 }
@@ -467,11 +471,17 @@ size_t EllpackPageImpl::MemCostBytes(size_t num_rows, size_t row_stride,
   return compressed_size_bytes;
 }
 
-EllpackDeviceAccessor EllpackPageImpl::GetDeviceAccessor(int device) const {
+EllpackDeviceAccessor EllpackPageImpl::GetDeviceAccessor(
+    int device, common::Span<FeatureType const> feature_types) const {
   gidx_buffer.SetDevice(device);
-  return EllpackDeviceAccessor(
-      device, cuts_, is_dense, row_stride, base_rowid, n_rows,
-      common::CompressedIterator<uint32_t>(gidx_buffer.ConstDevicePointer(),
-                                           NumSymbols()));
+  return {device,
+          cuts_,
+          is_dense,
+          row_stride,
+          base_rowid,
+          n_rows,
+          common::CompressedIterator<uint32_t>(gidx_buffer.ConstDevicePointer(),
+                                               NumSymbols()),
+          feature_types};
 }
 }  // namespace xgboost

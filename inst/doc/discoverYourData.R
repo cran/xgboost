@@ -71,7 +71,7 @@ data(agaricus.test, package='xgboost')
 train <- agaricus.train
 test <- agaricus.test
 
-#Random Forest™ - 1000 trees
+#Random Forest - 1000 trees
 bst <- xgboost(data = train$data, label = train$label, max_depth = 4, num_parallel_tree = 1000, subsample = 0.5, colsample_bytree =0.5, nrounds = 1, objective = "binary:logistic")
 
 #Boosting - 3 rounds

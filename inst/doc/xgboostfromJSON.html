@@ -16,8 +16,24 @@
 <title>XGBoost from JSON</title>
 
 
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
 
-<style type="text/css">code{white-space: pre;}</style>
+
+<style type="text/css">
+  code {
+    white-space: pre;
+  }
+  .sourceCode {
+    overflow: visible;
+  }
+</style>
 <style type="text/css" data-origin="pandoc">
 a.sourceLine { display: inline-block; line-height: 1.25; }
 a.sourceLine { pointer-events: none; color: inherit; text-decoration: inherit; }
@@ -103,6 +119,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   }
 })();
 </script>
+
 
 
 
@@ -320,7 +337,7 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 <h1><span class="header-section-number">1</span> XGBoost from JSON</h1>
 <div id="introduction" class="section level2">
 <h2><span class="header-section-number">1.1</span> Introduction</h2>
-<p>The purpose of this Vignette is to show you how to correctly load and work with an <strong>Xgboost</strong> model that has been dumped to JSON. <strong>Xgboost</strong> internally converts all data to <a href="https://en.wikipedia.org/wiki/Single-precision_floating-point_format">32-bit floats</a>, and the values dumped to JSON are decimal representations of these values. When working with a model that has been parsed from a JSON file, care must be taken to correctly treat:</p>
+<p>The purpose of this Vignette is to show you how to correctly load and work with an <strong>XGBoost</strong> model that has been dumped to JSON. <strong>XGBoost</strong> internally converts all data to <a href="https://en.wikipedia.org/wiki/Single-precision_floating-point_format">32-bit floats</a>, and the values dumped to JSON are decimal representations of these values. When working with a model that has been parsed from a JSON file, care must be taken to correctly treat:</p>
 <ul>
 <li>the input data, which should be converted to 32-bit floats</li>
 <li>any 32-bit floats that were stored in JSON as decimal representations</li>
@@ -362,7 +379,7 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 <a class="sourceLine" id="cb6-23" data-line-number="23">  <span class="dt">missing =</span> <span class="ot">NA</span>,</a>
 <a class="sourceLine" id="cb6-24" data-line-number="24">  <span class="dt">max_depth =</span> <span class="dv">1</span></a>
 <a class="sourceLine" id="cb6-25" data-line-number="25">)</a></code></pre></div>
-<pre><code>## [06:09:45] WARNING: amalgamation/../src/learner.cc:1095: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+<pre><code>## [05:30:28] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
 ## [1]  train-logloss:0.505253</code></pre>
 </div>
 <div id="comparing-results" class="section level2">
@@ -374,7 +391,7 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 <a class="sourceLine" id="cb8-3" data-line-number="3">node &lt;-<span class="st"> </span>bst_from_json[[<span class="dv">1</span>]]</a>
 <a class="sourceLine" id="cb8-4" data-line-number="4"><span class="kw">cat</span>(bst_json)</a></code></pre></div>
 <pre><code>## [
-##   { &quot;nodeid&quot;: 0, &quot;depth&quot;: 0, &quot;split&quot;: &quot;0&quot;, &quot;split_condition&quot;: 20180132, &quot;yes&quot;: 1, &quot;no&quot;: 2, &quot;missing&quot;: 1 , &quot;children&quot;: [
+##   { &quot;nodeid&quot;: 0, &quot;depth&quot;: 0, &quot;split&quot;: &quot;f0&quot;, &quot;split_condition&quot;: 20180132, &quot;yes&quot;: 1, &quot;no&quot;: 2, &quot;missing&quot;: 1 , &quot;children&quot;: [
 ##     { &quot;nodeid&quot;: 1, &quot;leaf&quot;: 0.360000014 }, 
 ##     { &quot;nodeid&quot;: 2, &quot;leaf&quot;: -0.450000018 }
 ##   ]}
@@ -481,8 +498,8 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 <a class="sourceLine" id="cb26-10" data-line-number="10">bst_preds <span class="op">==</span><span class="st"> </span>bst_from_json_preds</a></code></pre></div>
 <pre><code>##  [1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
 ## [13] FALSE FALSE FALSE FALSE FALSE FALSE</code></pre>
-<p>None are exactly equal again. What is going on here? Well, since we are using the value <code>1</code> in the calcuations, we have introduced a double into the calculation. Because of this, all float values are promoted to 64-bit doubles and the 64-bit version of the exponentiation operator <code>exp</code> is also used. On the other hand, xgboost uses the 32-bit version of the exponentation operator in its <a href="https://github.com/dmlc/xgboost/blob/54980b8959680a0da06a3fc0ec776e47c8cbb0a1/src/common/math.h#L25-L27">sigmoid function</a>.</p>
-<p>How do we fix this? We have to ensure we use the correct datatypes everywhere and the correct operators. If we use only floats, the float library that we have loaded will ensure the 32-bit float exponention operator is applied.</p>
+<p>None are exactly equal again. What is going on here? Well, since we are using the value <code>1</code> in the calculations, we have introduced a double into the calculation. Because of this, all float values are promoted to 64-bit doubles and the 64-bit version of the exponentiation operator <code>exp</code> is also used. On the other hand, xgboost uses the 32-bit version of the exponentiation operator in its <a href="https://github.com/dmlc/xgboost/blob/54980b8959680a0da06a3fc0ec776e47c8cbb0a1/src/common/math.h#L25-L27">sigmoid function</a>.</p>
+<p>How do we fix this? We have to ensure we use the correct data types everywhere and the correct operators. If we use only floats, the float library that we have loaded will ensure the 32-bit float exponentiation operator is applied.</p>
 <div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb28-1" data-line-number="1"><span class="co"># calculate the predictions casting doubles to floats</span></a>
 <a class="sourceLine" id="cb28-2" data-line-number="2">bst_from_json_preds &lt;-<span class="st"> </span><span class="kw">ifelse</span>(<span class="kw">fl</span>(data<span class="op">$</span>dates)<span class="op">&lt;</span><span class="kw">fl</span>(node<span class="op">$</span>split_condition),</a>
 <a class="sourceLine" id="cb28-3" data-line-number="3">                              <span class="kw">as.numeric</span>(<span class="kw">fl</span>(<span class="dv">1</span>)<span class="op">/</span>(<span class="kw">fl</span>(<span class="dv">1</span>)<span class="op">+</span><span class="kw">exp</span>(<span class="kw">fl</span>(<span class="op">-</span><span class="dv">1</span>)<span class="op">*</span><span class="kw">fl</span>(node<span class="op">$</span>children[[<span class="dv">1</span>]]<span class="op">$</span>leaf)))),</a>

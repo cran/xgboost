@@ -1,5 +1,5 @@
 /*!
- * Copyright 2014 by Contributors
+ * Copyright 2014-2021 by Contributors
  * \file quantile.h
  * \brief util to compute quantiles
  * \author Tianqi Chen
@@ -15,6 +15,7 @@
 #include <cstring>
 #include <algorithm>
 #include <iostream>
+#include <set>
 
 #include "timer.h"
 
@@ -575,7 +576,7 @@ class QuantileSketchTemplate {
    */
   inline void Push(DType x, RType w = 1) {
     if (w == static_cast<RType>(0)) return;
-    if (inqueue.qtail == inqueue.queue.size()) {
+    if (inqueue.qtail == inqueue.queue.size() && inqueue.queue[inqueue.qtail - 1].value != x) {
       // jump from lazy one value to limit_size * 2
       if (inqueue.queue.size() == 1) {
         inqueue.queue.resize(limit_size * 2);
@@ -707,9 +708,13 @@ class HostSketchContainer {
 
  private:
   std::vector<WQSketch> sketches_;
+  std::vector<std::set<bst_cat_t>> categories_;
+  std::vector<FeatureType> const feature_types_;
+
   std::vector<bst_row_t> columns_size_;
   int32_t max_bins_;
   bool use_group_ind_{false};
+  int32_t n_threads_;
   Monitor monitor_;
 
  public:
@@ -720,7 +725,8 @@ class HostSketchContainer {
    * \param use_group whether is assigned to group to data instance.
    */
   HostSketchContainer(std::vector<bst_row_t> columns_size, int32_t max_bins,
-                      bool use_group);
+                      common::Span<FeatureType const> feature_types, bool use_group,
+                      int32_t n_threads);
 
   static bool UseGroup(MetaInfo const &info) {
     size_t const num_groups =
@@ -758,7 +764,8 @@ class HostSketchContainer {
                  std::vector<int32_t>* p_num_cuts);
 
   /* \brief Push a CSR matrix. */
-  void PushRowPage(SparsePage const& page, MetaInfo const& info);
+  void PushRowPage(SparsePage const &page, MetaInfo const &info,
+                   Span<float> const hessian = {});
 
   void MakeCuts(HistogramCuts* cuts);
 };

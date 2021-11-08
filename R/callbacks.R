@@ -188,7 +188,7 @@ cb.reset.parameters <- function(new_params) {
   pnames <- gsub("\\.", "_", names(new_params))
   nrounds <- NULL
 
-  # run some checks in the begining
+  # run some checks in the beginning
   init <- function(env) {
     nrounds <<- env$end_iteration - env$begin_iteration + 1
 
@@ -263,10 +263,7 @@ cb.reset.parameters <- function(new_params) {
 #' \itemize{
 #' \item \code{best_score} the evaluation score at the best iteration
 #' \item \code{best_iteration} at which boosting iteration the best score has occurred (1-based index)
-#' \item \code{best_ntreelimit} to use with the \code{ntreelimit} parameter in \code{predict}.
-#'      It differs from \code{best_iteration} in multiclass or random forest settings.
 #' }
-#'
 #' The Same values are also stored as xgb-attributes:
 #' \itemize{
 #' \item \code{best_iteration} is stored as a 0-based iteration index (for interoperability of binary models)
@@ -498,13 +495,12 @@ cb.cv.predict <- function(save_models = FALSE) {
         rep(NA_real_, N)
       }
 
-    ntreelimit <- NVL(env$basket$best_ntreelimit,
-                      env$end_iteration * env$num_parallel_tree)
+    iterationrange <- c(1, NVL(env$basket$best_iteration, env$end_iteration) + 1)
     if (NVL(env$params[['booster']], '') == 'gblinear') {
-      ntreelimit <- 0 # must be 0 for gblinear
+      iterationrange <- c(1, 1)  # must be 0 for gblinear
     }
     for (fd in env$bst_folds) {
-      pr <- predict(fd$bst, fd$watchlist[[2]], ntreelimit = ntreelimit, reshape = TRUE)
+      pr <- predict(fd$bst, fd$watchlist[[2]], iterationrange = iterationrange, reshape = TRUE)
       if (is.matrix(pred)) {
         pred[fd$index, ] <- pr
       } else {
@@ -533,7 +529,7 @@ cb.cv.predict <- function(save_models = FALSE) {
 #' Callback closure for collecting the model coefficients history of a gblinear booster
 #' during its training.
 #'
-#' @param sparse when set to FALSE/TURE, a dense/sparse matrix is used to store the result.
+#' @param sparse when set to FALSE/TRUE, a dense/sparse matrix is used to store the result.
 #'       Sparse format is useful when one expects only a subset of coefficients to be non-zero,
 #'       when using the "thrifty" feature selector with fairly small number of top features
 #'       selected per iteration.
@@ -560,7 +556,6 @@ cb.cv.predict <- function(save_models = FALSE) {
 #' #
 #' # In the iris dataset, it is hard to linearly separate Versicolor class from the rest
 #' # without considering the 2nd order interactions:
-#' require(magrittr)
 #' x <- model.matrix(Species ~ .^2, iris)[,-1]
 #' colnames(x)
 #' dtrain <- xgb.DMatrix(scale(x), label = 1*(iris$Species == "versicolor"))
@@ -581,7 +576,7 @@ cb.cv.predict <- function(save_models = FALSE) {
 #' bst <- xgb.train(param, dtrain, list(tr=dtrain), nrounds = 200, eta = 0.8,
 #'                  updater = 'coord_descent', feature_selector = 'thrifty', top_k = 1,
 #'                  callbacks = list(cb.gblinear.history()))
-#' xgb.gblinear.history(bst) %>% matplot(type = 'l')
+#' matplot(xgb.gblinear.history(bst), type = 'l')
 #' #  Componentwise boosting is known to have similar effect to Lasso regularization.
 #' # Try experimenting with various values of top_k, eta, nrounds,
 #' # as well as different feature_selectors.
@@ -590,7 +585,7 @@ cb.cv.predict <- function(save_models = FALSE) {
 #' bst <- xgb.cv(param, dtrain, nfold = 5, nrounds = 100, eta = 0.8,
 #'              callbacks = list(cb.gblinear.history()))
 #' # coefficients in the CV fold #3
-#' xgb.gblinear.history(bst)[[3]] %>% matplot(type = 'l')
+#' matplot(xgb.gblinear.history(bst)[[3]], type = 'l')
 #'
 #'
 #' #### Multiclass classification:
@@ -603,15 +598,15 @@ cb.cv.predict <- function(save_models = FALSE) {
 #' bst <- xgb.train(param, dtrain, list(tr=dtrain), nrounds = 70, eta = 0.5,
 #'                  callbacks = list(cb.gblinear.history()))
 #' # Will plot the coefficient paths separately for each class:
-#' xgb.gblinear.history(bst, class_index = 0) %>% matplot(type = 'l')
-#' xgb.gblinear.history(bst, class_index = 1) %>% matplot(type = 'l')
-#' xgb.gblinear.history(bst, class_index = 2) %>% matplot(type = 'l')
+#' matplot(xgb.gblinear.history(bst, class_index = 0), type = 'l')
+#' matplot(xgb.gblinear.history(bst, class_index = 1), type = 'l')
+#' matplot(xgb.gblinear.history(bst, class_index = 2), type = 'l')
 #'
 #' # CV:
 #' bst <- xgb.cv(param, dtrain, nfold = 5, nrounds = 70, eta = 0.5,
 #'               callbacks = list(cb.gblinear.history(FALSE)))
-#' # 1st forld of 1st class
-#' xgb.gblinear.history(bst, class_index = 0)[[1]] %>% matplot(type = 'l')
+#' # 1st fold of 1st class
+#' matplot(xgb.gblinear.history(bst, class_index = 0)[[1]], type = 'l')
 #'
 #' @export
 cb.gblinear.history <- function(sparse=FALSE) {
@@ -642,9 +637,14 @@ cb.gblinear.history <- function(sparse=FALSE) {
     if (!is.null(env$bst)) { # # xgb.train:
       coefs <<- list2mat(coefs)
     } else { # xgb.cv:
-      # first lapply transposes the list
-      coefs <<- lapply(seq_along(coefs[[1]]), function(i) lapply(coefs, "[[", i)) %>%
-                lapply(function(x) list2mat(x))
+      # second lapply transposes the list
+      coefs <<- lapply(
+        X = lapply(
+          X = seq_along(coefs[[1]]),
+          FUN = function(i) lapply(coefs, "[[", i)
+        ),
+        FUN = list2mat
+      )
     }
   }
 

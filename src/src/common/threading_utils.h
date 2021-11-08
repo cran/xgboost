@@ -7,9 +7,27 @@
 #define XGBOOST_COMMON_THREADING_UTILS_H_
 
 #include <dmlc/common.h>
-#include <vector>
+#include <dmlc/omp.h>
+
 #include <algorithm>
+#include <limits>
+#include <type_traits>  // std::is_signed
+#include <vector>
+
 #include "xgboost/logging.h"
+
+#if !defined(_OPENMP)
+extern "C" {
+inline int32_t omp_get_thread_limit() __GOMP_NOTHROW { return 1; }  // NOLINT
+}
+#endif  // !defined(_OPENMP)
+
+// MSVC doesn't implement the thread limit.
+#if defined(_OPENMP) && defined(_MSC_VER)
+extern "C" {
+inline int32_t omp_get_thread_limit() { return std::numeric_limits<int32_t>::max(); }  // NOLINT
+}
+#endif  // defined(_MSC_VER)
 
 namespace xgboost {
 namespace common {
@@ -133,19 +151,99 @@ void ParallelFor2d(const BlockedSpace2d& space, int nthreads, Func func) {
   exc.Rethrow();
 }
 
+/**
+ * OpenMP schedule
+ */
+struct Sched {
+  enum {
+    kAuto,
+    kDynamic,
+    kStatic,
+    kGuided,
+  } sched;
+  size_t chunk{0};
+
+  Sched static Auto() { return Sched{kAuto}; }
+  Sched static Dyn(size_t n = 0) { return Sched{kDynamic, n}; }
+  Sched static Static(size_t n = 0) { return Sched{kStatic, n}; }
+  Sched static Guided() { return Sched{kGuided}; }
+};
+
 template <typename Index, typename Func>
-void ParallelFor(Index size, size_t nthreads, Func fn) {
+void ParallelFor(Index size, int32_t n_threads, Sched sched, Func fn) {
+#if defined(_MSC_VER)
+  // msvc doesn't support unsigned integer as openmp index.
+  using OmpInd = std::conditional_t<std::is_signed<Index>::value, Index, omp_ulong>;
+#else
+  using OmpInd = Index;
+#endif
+  OmpInd length = static_cast<OmpInd>(size);
+
   dmlc::OMPException exc;
-#pragma omp parallel for num_threads(nthreads) schedule(static)
-  for (Index i = 0; i < size; ++i) {
-    exc.Run(fn, i);
+  switch (sched.sched) {
+  case Sched::kAuto: {
+#pragma omp parallel for num_threads(n_threads)
+    for (OmpInd i = 0; i < length; ++i) {
+      exc.Run(fn, i);
+    }
+    break;
+  }
+  case Sched::kDynamic: {
+    if (sched.chunk == 0) {
+#pragma omp parallel for num_threads(n_threads) schedule(dynamic)
+      for (OmpInd i = 0; i < length; ++i) {
+        exc.Run(fn, i);
+      }
+    } else {
+#pragma omp parallel for num_threads(n_threads) schedule(dynamic, sched.chunk)
+      for (OmpInd i = 0; i < length; ++i) {
+        exc.Run(fn, i);
+      }
+    }
+    break;
+  }
+  case Sched::kStatic: {
+    if (sched.chunk == 0) {
+#pragma omp parallel for num_threads(n_threads) schedule(static)
+      for (OmpInd i = 0; i < length; ++i) {
+        exc.Run(fn, i);
+      }
+    } else {
+#pragma omp parallel for num_threads(n_threads) schedule(static, sched.chunk)
+      for (OmpInd i = 0; i < length; ++i) {
+        exc.Run(fn, i);
+      }
+    }
+    break;
+  }
+  case Sched::kGuided: {
+#pragma omp parallel for num_threads(n_threads) schedule(guided)
+    for (OmpInd i = 0; i < length; ++i) {
+      exc.Run(fn, i);
+    }
+    break;
+  }
   }
   exc.Rethrow();
 }
 
 template <typename Index, typename Func>
+void ParallelFor(Index size, size_t n_threads, Func fn) {
+  ParallelFor(size, n_threads, Sched::Static(), fn);
+}
+
+// FIXME(jiamingy): Remove this function to get rid of `omp_set_num_threads`, which sets a
+// global variable in runtime and affects other programs in the same process.
+template <typename Index, typename Func>
 void ParallelFor(Index size, Func fn) {
-  ParallelFor(size, omp_get_max_threads(), fn);
+  ParallelFor(size, omp_get_max_threads(), Sched::Static(), fn);
+}                                        // !defined(_OPENMP)
+
+
+inline int32_t OmpGetThreadLimit() {
+  int32_t limit = omp_get_thread_limit();
+  CHECK_GE(limit, 1) << "Invalid thread limit for OpenMP.";
+  return limit;
 }
 
 /* \brief Configure parallel threads.
@@ -161,19 +259,29 @@ inline int32_t OmpSetNumThreads(int32_t* p_threads) {
   if (threads <= 0) {
     threads = omp_get_num_procs();
   }
+  threads = std::min(threads, OmpGetThreadLimit());
   omp_set_num_threads(threads);
   return nthread_original;
 }
+
 inline int32_t OmpSetNumThreadsWithoutHT(int32_t* p_threads) {
   auto& threads = *p_threads;
   int32_t nthread_original = omp_get_max_threads();
   if (threads <= 0) {
     threads = nthread_original;
   }
+  threads = std::min(threads, OmpGetThreadLimit());
   omp_set_num_threads(threads);
   return nthread_original;
 }
 
+inline int32_t OmpGetNumThreads(int32_t n_threads) {
+  if (n_threads <= 0) {
+    n_threads = omp_get_num_procs();
+  }
+  n_threads = std::min(n_threads, OmpGetThreadLimit());
+  return n_threads;
+}
 }  // namespace common
 }  // namespace xgboost
 

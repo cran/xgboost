@@ -1,5 +1,5 @@
 /*!
- * Copyright 2017-2019 XGBoost contributors
+ * Copyright 2017-2021 XGBoost contributors
  */
 #include <thrust/iterator/discard_iterator.h>
 #include <thrust/iterator/transform_output_iterator.h>
@@ -10,16 +10,6 @@
 
 namespace xgboost {
 namespace tree {
-
-struct IndicateLeftTransform {
-  bst_node_t left_nidx;
-  explicit IndicateLeftTransform(bst_node_t left_nidx) : left_nidx(left_nidx) {}
-  __host__ __device__ __forceinline__ size_t
-  operator()(const bst_node_t& x) const {
-    return x == left_nidx ? 1 : 0;
-  }
-};
-
 struct IndexFlagTuple {
   size_t idx;
   size_t flag;
@@ -60,12 +50,6 @@ struct WriteResultsFunctor {
   }
 };
 
-// Change the value type of thrust discard iterator so we can use it with cub
-class DiscardOverload : public thrust::discard_iterator<IndexFlagTuple> {
- public:
-  using value_type = IndexFlagTuple;  // NOLINT
-};
-
 // Implement partitioning via single scan operation using transform output to
 // write the result
 void RowPartitioner::SortPosition(common::Span<bst_node_t> position,
@@ -77,7 +61,7 @@ void RowPartitioner::SortPosition(common::Span<bst_node_t> position,
   WriteResultsFunctor write_results{left_nidx, position, position_out,
                                     ridx,      ridx_out, d_left_count};
   auto discard_write_iterator =
-      thrust::make_transform_output_iterator(DiscardOverload(), write_results);
+      thrust::make_transform_output_iterator(dh::TypedDiscard<IndexFlagTuple>(), write_results);
   auto counting = thrust::make_counting_iterator(0llu);
   auto input_iterator = dh::MakeTransformIterator<IndexFlagTuple>(
       counting, [=] __device__(size_t idx) {
@@ -96,7 +80,7 @@ void RowPartitioner::SortPosition(common::Span<bst_node_t> position,
 void Reset(int device_idx, common::Span<RowPartitioner::RowIndexT> ridx,
            common::Span<bst_node_t> position) {
   CHECK_EQ(ridx.size(), position.size());
-  dh::LaunchN(device_idx, ridx.size(), [=] __device__(size_t idx) {
+  dh::LaunchN(ridx.size(), [=] __device__(size_t idx) {
     ridx[idx] = idx;
     position[idx] = 0;
   });
@@ -131,7 +115,7 @@ common::Span<const RowPartitioner::RowIndexT> RowPartitioner::GetRows(
   // Return empty span here as a valid result
   // Will error if we try to construct a span from a pointer with size 0
   if (segment.Size() == 0) {
-    return common::Span<const RowPartitioner::RowIndexT>();
+    return {};
   }
   return ridx_.CurrentSpan().subspan(segment.begin, segment.Size());
 }
@@ -180,7 +164,7 @@ void RowPartitioner::SortPositionAndCopy(const Segment& segment,
   const auto d_position_other = position_.Other() + segment.begin;
   const auto d_ridx_current = ridx_.Current() + segment.begin;
   const auto d_ridx_other = ridx_.Other() + segment.begin;
-  dh::LaunchN(device_idx_, segment.Size(), stream, [=] __device__(size_t idx) {
+  dh::LaunchN(segment.Size(), stream, [=] __device__(size_t idx) {
     d_position_current[idx] = d_position_other[idx];
     d_ridx_current[idx] = d_ridx_other[idx];
   });

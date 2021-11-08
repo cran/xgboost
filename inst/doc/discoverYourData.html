@@ -13,11 +13,27 @@
 <meta name="author" content="Tianqi Chen, Tong He, Michaël Benesty, Yuan Tang" />
 
 
-<title>Understand your dataset with Xgboost</title>
+<title>Understand your dataset with XGBoost</title>
 
 
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
 
-<style type="text/css">code{white-space: pre;}</style>
+
+<style type="text/css">
+  code {
+    white-space: pre;
+  }
+  .sourceCode {
+    overflow: visible;
+  }
+</style>
 <style type="text/css" data-origin="pandoc">
 a.sourceLine { display: inline-block; line-height: 1.25; }
 a.sourceLine { pointer-events: none; color: inherit; text-decoration: inherit; }
@@ -103,6 +119,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   }
 })();
 </script>
+
 
 
 
@@ -288,7 +305,7 @@ margin-top: 5px; }
 
 
 
-<h1 class="title toc-ignore">Understand your dataset with Xgboost</h1>
+<h1 class="title toc-ignore">Understand your dataset with XGBoost</h1>
 <h4 class="author">Tianqi Chen, Tong He, Michaël Benesty, Yuan Tang</h4>
 
 
@@ -317,8 +334,8 @@ margin-top: 5px; }
 <h1><span class="header-section-number">1</span> Understand your dataset with XGBoost</h1>
 <div id="introduction" class="section level2">
 <h2><span class="header-section-number">1.1</span> Introduction</h2>
-<p>The purpose of this vignette is to show you how to use <strong>Xgboost</strong> to discover and understand your own dataset better.</p>
-<p>This vignette is not about predicting anything (see <a href="https://github.com/dmlc/xgboost/blob/master/R-package/vignettes/xgboostPresentation.Rmd">Xgboost presentation</a>). We will explain how to use <strong>Xgboost</strong> to highlight the <em>link</em> between the <em>features</em> of your data and the <em>outcome</em>.</p>
+<p>The purpose of this vignette is to show you how to use <strong>XGBoost</strong> to discover and understand your own dataset better.</p>
+<p>This vignette is not about predicting anything (see <a href="https://github.com/dmlc/xgboost/blob/master/R-package/vignettes/xgboostPresentation.Rmd">XGBoost presentation</a>). We will explain how to use <strong>XGBoost</strong> to highlight the <em>link</em> between the <em>features</em> of your data and the <em>outcome</em>.</p>
 <p>Package loading:</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb1-1" data-line-number="1"><span class="kw">require</span>(xgboost)</a>
 <a class="sourceLine" id="cb1-2" data-line-number="2"><span class="kw">require</span>(Matrix)</a>
@@ -332,7 +349,7 @@ margin-top: 5px; }
 <h2><span class="header-section-number">1.2</span> Preparation of the dataset</h2>
 <div id="numeric-v.s.-categorical-variables" class="section level3">
 <h3><span class="header-section-number">1.2.1</span> Numeric v.s. categorical variables</h3>
-<p><strong>Xgboost</strong> manages only <code>numeric</code> vectors.</p>
+<p><strong>XGBoost</strong> manages only <code>numeric</code> vectors.</p>
 <p>What to do when you have <em>categorical</em> data?</p>
 <p>A <em>categorical</em> variable has a fixed number of different values. For instance, if a variable called <em>Colour</em> can have only one of these three values, <em>red</em>, <em>blue</em> or <em>green</em>, then <em>Colour</em> is a <em>categorical</em> variable.</p>
 <blockquote>
@@ -351,7 +368,7 @@ margin-top: 5px; }
 <div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb2-1" data-line-number="1"><span class="kw">data</span>(Arthritis)</a>
 <a class="sourceLine" id="cb2-2" data-line-number="2">df &lt;-<span class="st"> </span><span class="kw">data.table</span>(Arthritis, <span class="dt">keep.rownames =</span> <span class="ot">FALSE</span>)</a></code></pre></div>
 <blockquote>
-<p><code>data.table</code> is 100% compliant with <strong>R</strong> <code>data.frame</code> but its syntax is more consistent and its performance for large dataset is <a href="https://stackoverflow.com/questions/21435339/data-table-vs-dplyr-can-one-do-something-well-the-other-cant-or-does-poorly">best in class</a> (<code>dplyr</code> from <strong>R</strong> and <code>Pandas</code> from <strong>Python</strong> <a href="https://github.com/Rdatatable/data.table/wiki/Benchmarks-%3A-Grouping">included</a>). Some parts of <strong>Xgboost</strong> <strong>R</strong> package use <code>data.table</code>.</p>
+<p><code>data.table</code> is 100% compliant with <strong>R</strong> <code>data.frame</code> but its syntax is more consistent and its performance for large dataset is <a href="https://stackoverflow.com/questions/21435339/data-table-vs-dplyr-can-one-do-something-well-the-other-cant-or-does-poorly">best in class</a> (<code>dplyr</code> from <strong>R</strong> and <code>Pandas</code> from <strong>Python</strong> <a href="https://github.com/Rdatatable/data.table/wiki/Benchmarks-%3A-Grouping">included</a>). Some parts of <strong>XGBoost</strong> <strong>R</strong> package use <code>data.table</code>.</p>
 </blockquote>
 <p>The first thing we want to do is to have a look to the first few lines of the <code>data.table</code>:</p>
 <div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb3-1" data-line-number="1"><span class="kw">head</span>(df)</a></code></pre></div>
@@ -462,10 +479,10 @@ margin-top: 5px; }
 </div>
 <div id="build-the-model" class="section level2">
 <h2><span class="header-section-number">1.3</span> Build the model</h2>
-<p>The code below is very usual. For more information, you can look at the documentation of <code>xgboost</code> function (or at the vignette <a href="https://github.com/dmlc/xgboost/blob/master/R-package/vignettes/xgboostPresentation.Rmd">Xgboost presentation</a>).</p>
+<p>The code below is very usual. For more information, you can look at the documentation of <code>xgboost</code> function (or at the vignette <a href="https://github.com/dmlc/xgboost/blob/master/R-package/vignettes/xgboostPresentation.Rmd">XGBoost presentation</a>).</p>
 <div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb17-1" data-line-number="1">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> sparse_matrix, <span class="dt">label =</span> output_vector, <span class="dt">max_depth =</span> <span class="dv">4</span>,</a>
 <a class="sourceLine" id="cb17-2" data-line-number="2">               <span class="dt">eta =</span> <span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds =</span> <span class="dv">10</span>,<span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [06:09:43] WARNING: amalgamation/../src/learner.cc:1095: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+<pre><code>## [05:30:26] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
 ## [1]  train-logloss:0.485466 
 ## [2]  train-logloss:0.438534 
 ## [3]  train-logloss:0.412250 
@@ -477,7 +494,7 @@ margin-top: 5px; }
 ## [9]  train-logloss:0.341678 
 ## [10] train-logloss:0.334465</code></pre>
 <p>You can see some <code>train-error: 0.XXXXX</code> lines followed by a number. It decreases. Each line shows how well the model explains your data. Lower is better.</p>
-<p>A model which fits too well may <a href="https://en.wikipedia.org/wiki/Overfitting">overfit</a> (meaning it copy/paste too much the past, and won’t be that good to predict the future).</p>
+<p>A small value for training error may be a symptom of <a href="https://en.wikipedia.org/wiki/Overfitting">overfitting</a>, meaning the model will not accurately predict the future values.</p>
 <blockquote>
 <p>Here you can see the numbers decrease until line 7 and then increase.</p>
 <p>It probably means we are overfitting. To fix that I should reduce the number of rounds to <code>nrounds = 4</code>. I will let things like that because I don’t really care for the purpose of this example :-)</p>
@@ -494,12 +511,12 @@ margin-top: 5px; }
 <div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb19-1" data-line-number="1">importance &lt;-<span class="st"> </span><span class="kw">xgb.importance</span>(<span class="dt">feature_names =</span> <span class="kw">colnames</span>(sparse_matrix), <span class="dt">model =</span> bst)</a>
 <a class="sourceLine" id="cb19-2" data-line-number="2"><span class="kw">head</span>(importance)</a></code></pre></div>
 <pre><code>##             Feature        Gain      Cover  Frequency
-## 1:              Age 0.622031801 0.67251700 0.67241379
-## 2: TreatmentTreated 0.285750512 0.11916649 0.10344828
-## 3:          SexMale 0.048744021 0.04522027 0.08620690
-## 4:      AgeDiscret6 0.016604635 0.04784639 0.05172414
-## 5:      AgeDiscret3 0.016373781 0.08028950 0.05172414
-## 6:      AgeDiscret4 0.009270557 0.02858800 0.01724138</code></pre>
+## 1:              Age 0.622031768 0.67251696 0.67241379
+## 2: TreatmentTreated 0.285750540 0.11916651 0.10344828
+## 3:          SexMale 0.048744026 0.04522028 0.08620690
+## 4:      AgeDiscret6 0.016604636 0.04784639 0.05172414
+## 5:      AgeDiscret3 0.016373781 0.08028951 0.05172414
+## 6:      AgeDiscret4 0.009270558 0.02858801 0.01724138</code></pre>
 <blockquote>
 <p>The column <code>Gain</code> provide the information we are looking for.</p>
 <p>As you can see, features are classified by <code>Gain</code>.</p>
@@ -520,12 +537,12 @@ margin-top: 5px; }
 <a class="sourceLine" id="cb23-3" data-line-number="3"></a>
 <a class="sourceLine" id="cb23-4" data-line-number="4"><span class="kw">head</span>(importanceClean)</a></code></pre></div>
 <pre><code>##             Feature        Gain
-## 1:              Age 0.622031801
-## 2: TreatmentTreated 0.285750512
-## 3:          SexMale 0.048744021
-## 4:      AgeDiscret6 0.016604635
+## 1:              Age 0.622031768
+## 2: TreatmentTreated 0.285750540
+## 3:          SexMale 0.048744026
+## 4:      AgeDiscret6 0.016604636
 ## 5:      AgeDiscret3 0.016373781
-## 6:      AgeDiscret4 0.009270557</code></pre>
+## 6:      AgeDiscret4 0.009270558</code></pre>
 <blockquote>
 <p>In the table above we have removed two not needed columns and select only the first lines.</p>
 </blockquote>
@@ -597,26 +614,26 @@ margin-top: 5px; }
 </div>
 <div id="special-note-what-about-random-forests" class="section level2">
 <h2><span class="header-section-number">1.7</span> Special Note: What about Random Forests™?</h2>
-<p>As you may know, <a href="https://en.wikipedia.org/wiki/Random_forest">Random Forests™</a> algorithm is cousin with boosting and both are part of the <a href="https://en.wikipedia.org/wiki/Ensemble_learning">ensemble learning</a> family.</p>
-<p>Both trains several decision trees for one dataset. The <em>main</em> difference is that in Random Forests™, trees are independent and in boosting, the tree <code>N+1</code> focus its learning on the loss (&lt;=&gt; what has not been well modeled by the tree <code>N</code>).</p>
+<p>As you may know, <a href="https://en.wikipedia.org/wiki/Random_forest">Random Forests</a> algorithm is cousin with boosting and both are part of the <a href="https://en.wikipedia.org/wiki/Ensemble_learning">ensemble learning</a> family.</p>
+<p>Both trains several decision trees for one dataset. The <em>main</em> difference is that in Random Forests, trees are independent and in boosting, the tree <code>N+1</code> focus its learning on the loss (&lt;=&gt; what has not been well modeled by the tree <code>N</code>).</p>
 <p>This difference have an impact on a corner case in feature importance analysis: the <em>correlated features</em>.</p>
-<p>Imagine two features perfectly correlated, feature <code>A</code> and feature <code>B</code>. For one specific tree, if the algorithm needs one of them, it will choose randomly (true in both boosting and Random Forests™).</p>
-<p>However, in Random Forests™ this random choice will be done for each tree, because each tree is independent from the others. Therefore, approximatively, depending of your parameters, 50% of the trees will choose feature <code>A</code> and the other 50% will choose feature <code>B</code>. So the <em>importance</em> of the information contained in <code>A</code> and <code>B</code> (which is the same, because they are perfectly correlated) is diluted in <code>A</code> and <code>B</code>. So you won’t easily know this information is important to predict what you want to predict! It is even worse when you have 10 correlated features…</p>
+<p>Imagine two features perfectly correlated, feature <code>A</code> and feature <code>B</code>. For one specific tree, if the algorithm needs one of them, it will choose randomly (true in both boosting and Random Forests).</p>
+<p>However, in Random Forests this random choice will be done for each tree, because each tree is independent from the others. Therefore, approximatively, depending of your parameters, 50% of the trees will choose feature <code>A</code> and the other 50% will choose feature <code>B</code>. So the <em>importance</em> of the information contained in <code>A</code> and <code>B</code> (which is the same, because they are perfectly correlated) is diluted in <code>A</code> and <code>B</code>. So you won’t easily know this information is important to predict what you want to predict! It is even worse when you have 10 correlated features…</p>
 <p>In boosting, when a specific link between feature and outcome have been learned by the algorithm, it will try to not refocus on it (in theory it is what happens, reality is not always that simple). Therefore, all the importance will be on feature <code>A</code> or on feature <code>B</code> (but not both). You will know that one feature have an important role in the link between the observations and the label. It is still up to you to search for the correlated features to the one detected as important if you need to know all of them.</p>
-<p>If you want to try Random Forests™ algorithm, you can tweak Xgboost parameters!</p>
+<p>If you want to try Random Forests algorithm, you can tweak XGBoost parameters!</p>
 <p>For instance, to compute a model with 1000 trees, with a 0.5 factor on sampling rows and columns:</p>
 <div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb32-1" data-line-number="1"><span class="kw">data</span>(agaricus.train, <span class="dt">package=</span><span class="st">'xgboost'</span>)</a>
 <a class="sourceLine" id="cb32-2" data-line-number="2"><span class="kw">data</span>(agaricus.test, <span class="dt">package=</span><span class="st">'xgboost'</span>)</a>
 <a class="sourceLine" id="cb32-3" data-line-number="3">train &lt;-<span class="st"> </span>agaricus.train</a>
 <a class="sourceLine" id="cb32-4" data-line-number="4">test &lt;-<span class="st"> </span>agaricus.test</a>
 <a class="sourceLine" id="cb32-5" data-line-number="5"></a>
-<a class="sourceLine" id="cb32-6" data-line-number="6"><span class="co">#Random Forest™ - 1000 trees</span></a>
+<a class="sourceLine" id="cb32-6" data-line-number="6"><span class="co">#Random Forest - 1000 trees</span></a>
 <a class="sourceLine" id="cb32-7" data-line-number="7">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train<span class="op">$</span>data, <span class="dt">label =</span> train<span class="op">$</span>label, <span class="dt">max_depth =</span> <span class="dv">4</span>, <span class="dt">num_parallel_tree =</span> <span class="dv">1000</span>, <span class="dt">subsample =</span> <span class="fl">0.5</span>, <span class="dt">colsample_bytree =</span><span class="fl">0.5</span>, <span class="dt">nrounds =</span> <span class="dv">1</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [06:09:44] WARNING: amalgamation/../src/learner.cc:1095: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
-## [1]  train-logloss:0.456724</code></pre>
+<pre><code>## [05:30:27] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+## [1]  train-logloss:0.456419</code></pre>
 <div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb34-1" data-line-number="1"><span class="co">#Boosting - 3 rounds</span></a>
 <a class="sourceLine" id="cb34-2" data-line-number="2">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train<span class="op">$</span>data, <span class="dt">label =</span> train<span class="op">$</span>label, <span class="dt">max_depth =</span> <span class="dv">4</span>, <span class="dt">nrounds =</span> <span class="dv">3</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [06:09:44] WARNING: amalgamation/../src/learner.cc:1095: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+<pre><code>## [05:30:27] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
 ## [1]  train-logloss:0.444883 
 ## [2]  train-logloss:0.302428 
 ## [3]  train-logloss:0.212846</code></pre>
@@ -624,7 +641,7 @@ margin-top: 5px; }
 <p>Note that the parameter <code>round</code> is set to <code>1</code>.</p>
 </blockquote>
 <blockquote>
-<p><a href="https://www.stat.berkeley.edu/~breiman/RandomForests/cc_papers.htm"><strong>Random Forests™</strong></a> is a trademark of Leo Breiman and Adele Cutler and is licensed exclusively to Salford Systems for the commercial release of the software.</p>
+<p><a href="https://www.stat.berkeley.edu/~breiman/RandomForests/cc_papers.htm"><strong>Random Forests</strong></a> is a trademark of Leo Breiman and Adele Cutler and is licensed exclusively to Salford Systems for the commercial release of the software.</p>
 </blockquote>
 </div>
 </div>

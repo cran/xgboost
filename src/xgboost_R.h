@@ -47,10 +47,12 @@ XGB_DLL SEXP XGDMatrixCreateFromFile_R(SEXP fname, SEXP silent);
  * This assumes the matrix is stored in column major format
  * \param data R Matrix object
  * \param missing which value to represent missing value
+ * \param n_threads Number of threads used to construct DMatrix from dense matrix.
  * \return created dmatrix
  */
 XGB_DLL SEXP XGDMatrixCreateFromMat_R(SEXP mat,
-                                      SEXP missing);
+                                      SEXP missing,
+                                      SEXP n_threads);
 /*!
  * \brief create a matrix content from CSC format
  * \param indptr pointer to column headers
@@ -116,6 +118,14 @@ XGB_DLL SEXP XGDMatrixNumCol_R(SEXP handle);
  */
 XGB_DLL SEXP XGBoosterCreate_R(SEXP dmats);
 
+
+/*!
+ * \brief create xgboost learner, saving the pointer into an existing R object
+ * \param dmats a list of dmatrix handles that will be cached
+ * \param R_handle a clean R external pointer (not holding any object)
+ */
+XGB_DLL SEXP XGBoosterCreateInEmptyObj_R(SEXP dmats, SEXP R_handle);
+
 /*!
  * \brief set parameters
  * \param handle handle
@@ -156,7 +166,7 @@ XGB_DLL SEXP XGBoosterBoostOneIter_R(SEXP handle, SEXP dtrain, SEXP grad, SEXP h
 XGB_DLL SEXP XGBoosterEvalOneIter_R(SEXP handle, SEXP iter, SEXP dmats, SEXP evnames);
 
 /*!
- * \brief make prediction based on dmat
+ * \brief (Deprecated) make prediction based on dmat
  * \param handle handle
  * \param dmat data matrix
  * \param option_mask output_margin:1 predict_leaf:2
@@ -165,6 +175,16 @@ XGB_DLL SEXP XGBoosterEvalOneIter_R(SEXP handle, SEXP iter, SEXP dmats, SEXP evn
  */
 XGB_DLL SEXP XGBoosterPredict_R(SEXP handle, SEXP dmat, SEXP option_mask,
                                 SEXP ntree_limit, SEXP training);
+
+/*!
+ * \brief Run prediction on DMatrix, replacing `XGBoosterPredict_R`
+ * \param handle handle
+ * \param dmat data matrix
+ * \param json_config See `XGBoosterPredictFromDMatrix` in xgboost c_api.h
+ *
+ * \return A list containing 2 vectors, first one for shape while second one for prediction result.
+ */
+XGB_DLL SEXP XGBoosterPredictFromDMatrix_R(SEXP handle, SEXP dmat, SEXP json_config);
 /*!
  * \brief load model from existing file
  * \param handle handle
@@ -256,5 +276,13 @@ XGB_DLL SEXP XGBoosterSetAttr_R(SEXP handle, SEXP name, SEXP val);
  * \return string vector containing attribute names
  */
 XGB_DLL SEXP XGBoosterGetAttrNames_R(SEXP handle);
+
+/*!
+ * \brief Get feature scores from the model.
+ * \param json_config See `XGBoosterFeatureScore` in xgboost c_api.h
+ * \return A vector with the first element as feature names, second element as shape of
+ *         feature scores and thrid element as feature scores.
+ */
+XGB_DLL SEXP XGBoosterFeatureScore_R(SEXP handle, SEXP json_config);
 
 #endif  // XGBOOST_WRAPPER_R_H_ // NOLINT(*)

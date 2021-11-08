@@ -1,7 +1,7 @@
 #' Construct xgb.DMatrix object
 #'
 #' Construct xgb.DMatrix object from either a dense matrix, a sparse matrix, or a local file.
-#' Supported input file formats are either a libsvm text file or a binary file that was created previously by
+#' Supported input file formats are either a LIBSVM text file or a binary file that was created previously by
 #' \code{\link{xgb.DMatrix.save}}).
 #'
 #' @param data a \code{matrix} object (either numeric or integer), a \code{dgCMatrix} object, or a character
@@ -11,6 +11,7 @@
 #' @param missing a float value to represents missing values in data (used only when input is a dense matrix).
 #'        It is useful when a 0 or some other extreme value represents missing values in data.
 #' @param silent whether to suppress printing an informational message after loading from a file.
+#' @param nthread Number of threads used for creating DMatrix.
 #' @param ... the \code{info} data could be passed directly as parameters, without creating an \code{info} list.
 #'
 #' @examples
@@ -20,7 +21,7 @@
 #' dtrain <- xgb.DMatrix('xgb.DMatrix.data')
 #' if (file.exists('xgb.DMatrix.data')) file.remove('xgb.DMatrix.data')
 #' @export
-xgb.DMatrix <- function(data, info = list(), missing = NA, silent = FALSE, ...) {
+xgb.DMatrix <- function(data, info = list(), missing = NA, silent = FALSE, nthread = NULL, ...) {
   cnames <- NULL
   if (typeof(data) == "character") {
     if (length(data) > 1)
@@ -29,7 +30,7 @@ xgb.DMatrix <- function(data, info = list(), missing = NA, silent = FALSE, ...) 
     data <- path.expand(data)
     handle <- .Call(XGDMatrixCreateFromFile_R, data, as.integer(silent))
   } else if (is.matrix(data)) {
-    handle <- .Call(XGDMatrixCreateFromMat_R, data, missing)
+    handle <- .Call(XGDMatrixCreateFromMat_R, data, missing, as.integer(NVL(nthread, -1)))
     cnames <- colnames(data)
   } else if (inherits(data, "dgCMatrix")) {
     handle <- .Call(XGDMatrixCreateFromCSC_R, data@p, data@i, data@x, nrow(data))
@@ -51,12 +52,12 @@ xgb.DMatrix <- function(data, info = list(), missing = NA, silent = FALSE, ...) 
 
 # get dmatrix from data, label
 # internal helper method
-xgb.get.DMatrix <- function(data, label = NULL, missing = NA, weight = NULL) {
+xgb.get.DMatrix <- function(data, label = NULL, missing = NA, weight = NULL, nthread = NULL) {
   if (inherits(data, "dgCMatrix") || is.matrix(data)) {
     if (is.null(label)) {
       stop("label must be provided when data is a matrix")
     }
-    dtrain <- xgb.DMatrix(data, label = label, missing = missing)
+    dtrain <- xgb.DMatrix(data, label = label, missing = missing, nthread = nthread)
     if (!is.null(weight)){
       setinfo(dtrain, "weight", weight)
     }
@@ -161,9 +162,9 @@ dimnames.xgb.DMatrix <- function(x) {
 #' The \code{name} field can be one of the following:
 #'
 #' \itemize{
-#'     \item \code{label}: label Xgboost learn from ;
+#'     \item \code{label}: label XGBoost learn from ;
 #'     \item \code{weight}: to do a weight rescale ;
-#'     \item \code{base_margin}: base margin is the base prediction Xgboost will boost from ;
+#'     \item \code{base_margin}: base margin is the base prediction XGBoost will boost from ;
 #'     \item \code{nrow}: number of rows of the \code{xgb.DMatrix}.
 #'
 #' }
@@ -216,9 +217,9 @@ getinfo.xgb.DMatrix <- function(object, name, ...) {
 #' The \code{name} field can be one of the following:
 #'
 #' \itemize{
-#'     \item \code{label}: label Xgboost learn from ;
+#'     \item \code{label}: label XGBoost learn from ;
 #'     \item \code{weight}: to do a weight rescale ;
-#'     \item \code{base_margin}: base margin is the base prediction Xgboost will boost from ;
+#'     \item \code{base_margin}: base margin is the base prediction XGBoost will boost from ;
 #'     \item \code{group}: number of rows in each group (to use with \code{rank:pairwise} objective).
 #' }
 #'

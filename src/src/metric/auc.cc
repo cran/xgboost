@@ -87,8 +87,7 @@ std::tuple<float, float, float> BinaryAUC(std::vector<float> const &predts,
  * - Kleiman, Ross and Page, David. $AUC_{\mu}$: A Performance Metric for Multi-Class
  *   Machine Learning Models
  */
-float MultiClassOVR(std::vector<float> const& predts, MetaInfo const& info) {
-  auto n_classes = predts.size() / info.labels_.Size();
+float MultiClassOVR(std::vector<float> const& predts, MetaInfo const& info, size_t n_classes) {
   CHECK_NE(n_classes, 0);
   auto const& labels = info.labels_.ConstHostVector();
 
@@ -126,8 +125,8 @@ float MultiClassOVR(std::vector<float> const& predts, MetaInfo const& info) {
   for (size_t c = 0; c < n_classes; ++c) {
     if (local_area[c] != 0) {
       // normalize and weight it by prevalence.  After allreduce, `local_area` means the
-      // total covered area (not area under curve, rather it's the accessible are for each
-      // worker) for each class.
+      // total covered area (not area under curve, rather it's the accessible area for
+      // each worker) for each class.
       auc_sum += auc[c] / local_area[c] * tp[c];
       tp_sum += tp[c];
     } else {
@@ -230,6 +229,10 @@ class EvalAUC : public Metric {
       info.labels_.SetDevice(tparam_->gpu_id);
       info.weights_.SetDevice(tparam_->gpu_id);
     }
+    //  We use the global size to handle empty dataset.
+    std::array<size_t, 2> meta{info.labels_.Size(), preds.Size()};
+    rabit::Allreduce<rabit::op::Max>(meta.data(), meta.size());
+
     if (!info.group_ptr_.empty()) {
       /**
        * learning to rank
@@ -261,16 +264,17 @@ class EvalAUC : public Metric {
         CHECK_LE(auc, 1) << "Total AUC across groups: " << auc * valid_groups
                          << ", valid groups: " << valid_groups;
       }
-    } else if (info.labels_.Size() != preds.Size() &&
-               preds.Size() % info.labels_.Size() == 0) {
+    } else if (meta[0] != meta[1] && meta[1] % meta[0] == 0) {
       /**
        * multi class
        */
+      size_t n_classes = meta[1] / meta[0];
+      CHECK_NE(n_classes, 0);
       if (tparam_->gpu_id == GenericParameter::kCpuId) {
-        auc = MultiClassOVR(preds.ConstHostVector(), info);
+        auc = MultiClassOVR(preds.ConstHostVector(), info, n_classes);
       } else {
         auc = GPUMultiClassAUCOVR(preds.ConstDeviceSpan(), info, tparam_->gpu_id,
-                                  &this->d_cache_);
+                                  &this->d_cache_, n_classes);
       }
     } else {
       /**
@@ -310,7 +314,7 @@ class EvalAUC : public Metric {
   }
 };
 
-XGBOOST_REGISTER_METRIC(EvalBinaryAUC, "auc")
+XGBOOST_REGISTER_METRIC(EvalAUC, "auc")
 .describe("Receiver Operating Characteristic Area Under the Curve.")
 .set_body([](const char*) { return new EvalAUC(); });
 
@@ -323,7 +327,8 @@ GPUBinaryAUC(common::Span<float const> predts, MetaInfo const &info,
 }
 
 float GPUMultiClassAUCOVR(common::Span<float const> predts, MetaInfo const &info,
-                          int32_t device, std::shared_ptr<DeviceAUCCache>* cache) {
+                          int32_t device, std::shared_ptr<DeviceAUCCache>* cache,
+                          size_t n_classes) {
   common::AssertGPUSupport();
   return 0;
 }

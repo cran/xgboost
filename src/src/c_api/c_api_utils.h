@@ -7,13 +7,13 @@
 #include <algorithm>
 #include <functional>
 #include <vector>
+#include <memory>
+#include <string>
 
 #include "xgboost/logging.h"
 #include "xgboost/json.h"
 #include "xgboost/learner.h"
 #include "xgboost/c_api.h"
-
-#include "c_api_error.h"
 
 namespace xgboost {
 /* \brief Determine the output shape of prediction.
@@ -50,7 +50,7 @@ inline void CalcPredictShape(bool strict_shape, PredictionType type, size_t rows
       *out_dim = 2;
       shape.resize(*out_dim);
       shape.front() = rows;
-      shape.back() = groups;
+      shape.back() = std::min(groups, chunksize);
     }
     break;
   }
@@ -98,6 +98,10 @@ inline void CalcPredictShape(bool strict_shape, PredictionType type, size_t rows
       forest = std::max(static_cast<decltype(forest)>(1), forest);
       shape[3] = forest;
       *out_dim = shape.size();
+    } else if (chunksize == 1) {
+      *out_dim = 1;
+      shape.resize(*out_dim);
+      shape.front() = rows;
     } else {
       *out_dim = 2;
       shape.resize(*out_dim);
@@ -157,6 +161,83 @@ inline float GetMissing(Json const &config) {
     LOG(FATAL) << "Invalid missing value: " << j_missing;
   }
   return missing;
+}
+
+// Safe guard some global variables from being changed by XGBoost.
+class XGBoostAPIGuard {
+  int32_t device_id_ {0};
+
+#if defined(XGBOOST_USE_CUDA)
+  void SetGPUAttribute();
+  void RestoreGPUAttribute();
+#else
+  void SetGPUAttribute() {}
+  void RestoreGPUAttribute() {}
+#endif
+
+ public:
+  XGBoostAPIGuard() {
+    SetGPUAttribute();
+  }
+  ~XGBoostAPIGuard() {
+    RestoreGPUAttribute();
+  }
+};
+
+inline FeatureMap LoadFeatureMap(std::string const& uri) {
+  FeatureMap feat;
+  if (uri.size() != 0) {
+    std::unique_ptr<dmlc::Stream> fs(dmlc::Stream::Create(uri.c_str(), "r"));
+    dmlc::istream is(fs.get());
+    feat.LoadText(is);
+  }
+  return feat;
+}
+
+inline void GenerateFeatureMap(Learner const *learner,
+                               std::vector<Json> const &custom_feature_names,
+                               size_t n_features, FeatureMap *out_feature_map) {
+  auto &feature_map = *out_feature_map;
+  auto maybe = [&](std::vector<std::string> const &values, size_t i,
+                   std::string const &dft) {
+    return values.empty() ? dft : values[i];
+  };
+  if (feature_map.Size() == 0) {
+    // Use the feature names and types from booster.
+    std::vector<std::string> feature_names;
+    // priority:
+    // 1. feature map.
+    // 2. customized feature name.
+    // 3. from booster
+    // 4. default feature name.
+    if (!custom_feature_names.empty()) {
+      CHECK_EQ(custom_feature_names.size(), n_features)
+          << "Incorrect number of feature names.";
+      feature_names.resize(custom_feature_names.size());
+      std::transform(custom_feature_names.begin(), custom_feature_names.end(),
+                     feature_names.begin(),
+                     [](Json const &name) { return get<String const>(name); });
+    } else {
+      learner->GetFeatureNames(&feature_names);
+    }
+    if (!feature_names.empty()) {
+      CHECK_EQ(feature_names.size(), n_features) << "Incorrect number of feature names.";
+    }
+
+    std::vector<std::string> feature_types;
+    learner->GetFeatureTypes(&feature_types);
+    if (!feature_types.empty()) {
+      CHECK_EQ(feature_types.size(), n_features) << "Incorrect number of feature types.";
+    }
+
+    for (size_t i = 0; i < n_features; ++i) {
+      feature_map.PushBack(
+          i,
+          maybe(feature_names, i, "f" + std::to_string(i)).data(),
+          maybe(feature_types, i, "q").data());
+    }
+  }
+  CHECK_EQ(feature_map.Size(), n_features);
 }
 }  // namespace xgboost
 #endif  // XGBOOST_C_API_C_API_UTILS_H_

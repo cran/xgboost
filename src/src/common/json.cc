@@ -169,10 +169,10 @@ Json& DummyJsonObject() {
 }
 
 // Json Object
-JsonObject::JsonObject(JsonObject && that) :
+JsonObject::JsonObject(JsonObject && that) noexcept :
     Value(ValueKind::kObject), object_{std::move(that.object_)} {}
 
-JsonObject::JsonObject(std::map<std::string, Json>&& object)
+JsonObject::JsonObject(std::map<std::string, Json> &&object) noexcept
     : Value(ValueKind::kObject), object_{std::move(object)} {}
 
 Json& JsonObject::operator[](std::string const & key) {
@@ -233,7 +233,7 @@ void JsonString::Save(JsonWriter* writer) {
 }
 
 // Json Array
-JsonArray::JsonArray(JsonArray && that) :
+JsonArray::JsonArray(JsonArray && that) noexcept :
     Value(ValueKind::kArray), vec_{std::move(that.vec_)} {}
 
 Json& JsonArray::operator[](std::string const& ) {
@@ -394,7 +394,7 @@ Json JsonReader::Parse() {
       return ParseArray();
     } else if ( c == '-' || std::isdigit(c) ||
                 c == 'N' || c == 'I') {
-      // For now we only accept `NaN`, not `nan` as the later violiates LR(1) with `null`.
+      // For now we only accept `NaN`, not `nan` as the later violates LR(1) with `null`.
       return ParseNumber();
     } else if ( c == '\"' ) {
       return ParseString();
@@ -406,7 +406,7 @@ Json JsonReader::Parse() {
       Error("Unknown construct");
     }
   }
-  return Json();
+  return {};
 }
 
 Json JsonReader::Load() {
@@ -751,4 +751,9 @@ std::ostream &operator<<(std::ostream &os, StringView const v) {
   }
   return os;
 }
+
+static_assert(std::is_nothrow_move_constructible<Json>::value, "");
+static_assert(std::is_nothrow_move_constructible<Object>::value, "");
+static_assert(std::is_nothrow_move_constructible<Array>::value, "");
+static_assert(std::is_nothrow_move_constructible<String>::value, "");
 }  // namespace xgboost
