@@ -15,6 +15,19 @@
 
 <title>Understand your dataset with XGBoost</title>
 
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
 
 <style type="text/css">
   code{white-space: pre-wrap;}
@@ -35,26 +48,28 @@
   }
 </style>
 <style type="text/css" data-origin="pandoc">
-a.sourceLine { display: inline-block; line-height: 1.25; }
-a.sourceLine { pointer-events: none; color: inherit; text-decoration: inherit; }
-a.sourceLine:empty { height: 1.2em; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
 .sourceCode { overflow: visible; }
-code.sourceCode { white-space: pre; position: relative; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
 div.sourceCode { margin: 1em 0; }
 pre.sourceCode { margin: 0; }
 @media screen {
 div.sourceCode { overflow: auto; }
 }
 @media print {
-code.sourceCode { white-space: pre-wrap; }
-a.sourceLine { text-indent: -1em; padding-left: 1em; }
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
 }
-pre.numberSource a.sourceLine
-  { position: relative; left: -4em; }
-pre.numberSource a.sourceLine::before
-  { content: attr(data-line-number);
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
     position: relative; left: -1em; text-align: right; vertical-align: baseline;
-    border: none; pointer-events: all; display: inline-block;
+    border: none; display: inline-block;
     -webkit-touch-callout: none; -webkit-user-select: none;
     -khtml-user-select: none; -moz-user-select: none;
     -ms-user-select: none; user-select: none;
@@ -63,9 +78,9 @@ pre.numberSource a.sourceLine::before
   }
 pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
 div.sourceCode
-  {  }
+  {   }
 @media screen {
-a.sourceLine::before { text-decoration: underline; }
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 code span.al { color: #ff0000; font-weight: bold; } /* Alert */
 code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
@@ -311,67 +326,109 @@ margin-top: 5px; }
 
 <div id="TOC">
 <ul>
-<li><a href="#understand-your-dataset-with-xgboost"><span class="toc-section-number">1</span> Understand your dataset with XGBoost</a><ul>
-<li><a href="#introduction"><span class="toc-section-number">1.1</span> Introduction</a></li>
-<li><a href="#preparation-of-the-dataset"><span class="toc-section-number">1.2</span> Preparation of the dataset</a><ul>
-<li><a href="#numeric-v.s.-categorical-variables"><span class="toc-section-number">1.2.1</span> Numeric v.s. categorical variables</a></li>
-<li><a href="#conversion-from-categorical-to-numeric-variables"><span class="toc-section-number">1.2.2</span> Conversion from categorical to numeric variables</a></li>
+<li><a href="#understand-your-dataset-with-xgboost"><span class="toc-section-number">1</span> Understand your dataset with
+XGBoost</a>
+<ul>
+<li><a href="#introduction"><span class="toc-section-number">1.1</span>
+Introduction</a></li>
+<li><a href="#preparation-of-the-dataset"><span class="toc-section-number">1.2</span> Preparation of the dataset</a>
+<ul>
+<li><a href="#numeric-v.s.-categorical-variables"><span class="toc-section-number">1.2.1</span> Numeric v.s. categorical
+variables</a></li>
+<li><a href="#conversion-from-categorical-to-numeric-variables"><span class="toc-section-number">1.2.2</span> Conversion from categorical to
+numeric variables</a></li>
 </ul></li>
 <li><a href="#build-the-model"><span class="toc-section-number">1.3</span> Build the model</a></li>
 <li><a href="#feature-importance"><span class="toc-section-number">1.4</span> Feature importance</a></li>
-<li><a href="#measure-feature-importance"><span class="toc-section-number">1.5</span> Measure feature importance</a><ul>
-<li><a href="#build-the-feature-importance-data.table"><span class="toc-section-number">1.5.1</span> Build the feature importance data.table</a></li>
-<li><a href="#plotting-the-feature-importance"><span class="toc-section-number">1.5.2</span> Plotting the feature importance</a></li>
-<li><a href="#do-these-results-make-sense"><span class="toc-section-number">1.5.3</span> Do these results make sense?</a></li>
+<li><a href="#measure-feature-importance"><span class="toc-section-number">1.5</span> Measure feature importance</a>
+<ul>
+<li><a href="#build-the-feature-importance-data.table"><span class="toc-section-number">1.5.1</span> Build the feature importance
+data.table</a></li>
+<li><a href="#plotting-the-feature-importance"><span class="toc-section-number">1.5.2</span> Plotting the feature
+importance</a></li>
+<li><a href="#do-these-results-make-sense"><span class="toc-section-number">1.5.3</span> Do these results make
+sense?</a></li>
 </ul></li>
-<li><a href="#conclusion"><span class="toc-section-number">1.6</span> Conclusion</a></li>
-<li><a href="#special-note-what-about-random-forests"><span class="toc-section-number">1.7</span> Special Note: What about Random Forests™?</a></li>
+<li><a href="#conclusion"><span class="toc-section-number">1.6</span>
+Conclusion</a></li>
+<li><a href="#special-note-what-about-random-forests"><span class="toc-section-number">1.7</span> Special Note: What about Random
+Forests™?</a></li>
 </ul></li>
 </ul>
 </div>
 
-<div id="understand-your-dataset-with-xgboost" class="section level1">
-<h1><span class="header-section-number">1</span> Understand your dataset with XGBoost</h1>
-<div id="introduction" class="section level2">
+<div id="understand-your-dataset-with-xgboost" class="section level1" number="1">
+<h1><span class="header-section-number">1</span> Understand your dataset
+with XGBoost</h1>
+<div id="introduction" class="section level2" number="1.1">
 <h2><span class="header-section-number">1.1</span> Introduction</h2>
-<p>The purpose of this vignette is to show you how to use <strong>XGBoost</strong> to discover and understand your own dataset better.</p>
-<p>This vignette is not about predicting anything (see <a href="https://github.com/dmlc/xgboost/blob/master/R-package/vignettes/xgboostPresentation.Rmd">XGBoost presentation</a>). We will explain how to use <strong>XGBoost</strong> to highlight the <em>link</em> between the <em>features</em> of your data and the <em>outcome</em>.</p>
+<p>The purpose of this vignette is to show you how to use
+<strong>XGBoost</strong> to discover and understand your own dataset
+better.</p>
+<p>This vignette is not about predicting anything (see <a href="https://github.com/dmlc/xgboost/blob/master/R-package/vignettes/xgboostPresentation.Rmd">XGBoost
+presentation</a>). We will explain how to use <strong>XGBoost</strong>
+to highlight the <em>link</em> between the <em>features</em> of your
+data and the <em>outcome</em>.</p>
 <p>Package loading:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb1-1" data-line-number="1"><span class="kw">require</span>(xgboost)</a>
-<a class="sourceLine" id="cb1-2" data-line-number="2"><span class="kw">require</span>(Matrix)</a>
-<a class="sourceLine" id="cb1-3" data-line-number="3"><span class="kw">require</span>(data.table)</a>
-<a class="sourceLine" id="cb1-4" data-line-number="4"><span class="cf">if</span> (<span class="op">!</span><span class="kw">require</span>(<span class="st">'vcd'</span>)) <span class="kw">install.packages</span>(<span class="st">'vcd'</span>)</a></code></pre></div>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">require</span>(xgboost)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">require</span>(Matrix)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">require</span>(data.table)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">require</span>(<span class="st">&#39;vcd&#39;</span>)) <span class="fu">install.packages</span>(<span class="st">&#39;vcd&#39;</span>)</span></code></pre></div>
 <blockquote>
-<p><strong>VCD</strong> package is used for one of its embedded dataset only.</p>
+<p><strong>VCD</strong> package is used for one of its embedded dataset
+only.</p>
 </blockquote>
 </div>
-<div id="preparation-of-the-dataset" class="section level2">
-<h2><span class="header-section-number">1.2</span> Preparation of the dataset</h2>
-<div id="numeric-v.s.-categorical-variables" class="section level3">
-<h3><span class="header-section-number">1.2.1</span> Numeric v.s. categorical variables</h3>
-<p><strong>XGBoost</strong> manages only <code>numeric</code> vectors.</p>
+<div id="preparation-of-the-dataset" class="section level2" number="1.2">
+<h2><span class="header-section-number">1.2</span> Preparation of the
+dataset</h2>
+<div id="numeric-v.s.-categorical-variables" class="section level3" number="1.2.1">
+<h3><span class="header-section-number">1.2.1</span> Numeric v.s.
+categorical variables</h3>
+<p><strong>XGBoost</strong> manages only <code>numeric</code>
+vectors.</p>
 <p>What to do when you have <em>categorical</em> data?</p>
-<p>A <em>categorical</em> variable has a fixed number of different values. For instance, if a variable called <em>Colour</em> can have only one of these three values, <em>red</em>, <em>blue</em> or <em>green</em>, then <em>Colour</em> is a <em>categorical</em> variable.</p>
+<p>A <em>categorical</em> variable has a fixed number of different
+values. For instance, if a variable called <em>Colour</em> can have only
+one of these three values, <em>red</em>, <em>blue</em> or
+<em>green</em>, then <em>Colour</em> is a <em>categorical</em>
+variable.</p>
 <blockquote>
-<p>In <strong>R</strong>, a <em>categorical</em> variable is called <code>factor</code>.</p>
+<p>In <strong>R</strong>, a <em>categorical</em> variable is called
+<code>factor</code>.</p>
 <p>Type <code>?factor</code> in the console for more information.</p>
 </blockquote>
-<p>To answer the question above we will convert <em>categorical</em> variables to <code>numeric</code> one.</p>
+<p>To answer the question above we will convert <em>categorical</em>
+variables to <code>numeric</code> one.</p>
 </div>
-<div id="conversion-from-categorical-to-numeric-variables" class="section level3">
-<h3><span class="header-section-number">1.2.2</span> Conversion from categorical to numeric variables</h3>
-<div id="looking-at-the-raw-data" class="section level4">
-<h4><span class="header-section-number">1.2.2.1</span> Looking at the raw data</h4>
-<p>In this Vignette we will see how to transform a <em>dense</em> <code>data.frame</code> (<em>dense</em> = few zeroes in the matrix) with <em>categorical</em> variables to a very <em>sparse</em> matrix (<em>sparse</em> = lots of zero in the matrix) of <code>numeric</code> features.</p>
+<div id="conversion-from-categorical-to-numeric-variables" class="section level3" number="1.2.2">
+<h3><span class="header-section-number">1.2.2</span> Conversion from
+categorical to numeric variables</h3>
+<div id="looking-at-the-raw-data" class="section level4" number="1.2.2.1">
+<h4><span class="header-section-number">1.2.2.1</span> Looking at the
+raw data</h4>
+<p>In this Vignette we will see how to transform a <em>dense</em>
+<code>data.frame</code> (<em>dense</em> = few zeroes in the matrix) with
+<em>categorical</em> variables to a very <em>sparse</em> matrix
+(<em>sparse</em> = lots of zero in the matrix) of <code>numeric</code>
+features.</p>
 <p>The method we are going to see is usually called <a href="https://en.wikipedia.org/wiki/One-hot">one-hot encoding</a>.</p>
-<p>The first step is to load <code>Arthritis</code> dataset in memory and wrap it with <code>data.table</code> package.</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb2-1" data-line-number="1"><span class="kw">data</span>(Arthritis)</a>
-<a class="sourceLine" id="cb2-2" data-line-number="2">df &lt;-<span class="st"> </span><span class="kw">data.table</span>(Arthritis, <span class="dt">keep.rownames =</span> <span class="ot">FALSE</span>)</a></code></pre></div>
+<p>The first step is to load <code>Arthritis</code> dataset in memory
+and wrap it with <code>data.table</code> package.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">data</span>(Arthritis)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">data.table</span>(Arthritis, <span class="at">keep.rownames =</span> <span class="cn">FALSE</span>)</span></code></pre></div>
 <blockquote>
-<p><code>data.table</code> is 100% compliant with <strong>R</strong> <code>data.frame</code> but its syntax is more consistent and its performance for large dataset is <a href="https://stackoverflow.com/questions/21435339/data-table-vs-dplyr-can-one-do-something-well-the-other-cant-or-does-poorly">best in class</a> (<code>dplyr</code> from <strong>R</strong> and <code>Pandas</code> from <strong>Python</strong> <a href="https://github.com/Rdatatable/data.table/wiki/Benchmarks-%3A-Grouping">included</a>). Some parts of <strong>XGBoost</strong> <strong>R</strong> package use <code>data.table</code>.</p>
+<p><code>data.table</code> is 100% compliant with <strong>R</strong>
+<code>data.frame</code> but its syntax is more consistent and its
+performance for large dataset is <a href="https://stackoverflow.com/questions/21435339/data-table-vs-dplyr-can-one-do-something-well-the-other-cant-or-does-poorly">best
+in class</a> (<code>dplyr</code> from <strong>R</strong> and
+<code>Pandas</code> from <strong>Python</strong> <a href="https://github.com/Rdatatable/data.table/wiki/Benchmarks-%3A-Grouping">included</a>).
+Some parts of <strong>XGBoost</strong> <strong>R</strong> package use
+<code>data.table</code>.</p>
 </blockquote>
-<p>The first thing we want to do is to have a look to the first few lines of the <code>data.table</code>:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb3-1" data-line-number="1"><span class="kw">head</span>(df)</a></code></pre></div>
+<p>The first thing we want to do is to have a look to the first few
+lines of the <code>data.table</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df)</span></code></pre></div>
 <pre><code>##    ID Treatment  Sex Age Improved
 ## 1: 57   Treated Male  27     Some
 ## 2: 46   Treated Male  29     None
@@ -380,32 +437,41 @@ margin-top: 5px; }
 ## 5: 36   Treated Male  46   Marked
 ## 6: 23   Treated Male  58   Marked</code></pre>
 <p>Now we will check the format of each column.</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb5-1" data-line-number="1"><span class="kw">str</span>(df)</a></code></pre></div>
-<pre><code>## Classes 'data.table' and 'data.frame':   84 obs. of  5 variables:
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">str</span>(df)</span></code></pre></div>
+<pre><code>## Classes &#39;data.table&#39; and &#39;data.frame&#39;:   84 obs. of  5 variables:
 ##  $ ID       : int  57 46 77 17 36 23 75 39 33 55 ...
 ##  $ Treatment: Factor w/ 2 levels &quot;Placebo&quot;,&quot;Treated&quot;: 2 2 2 2 2 2 2 2 2 2 ...
 ##  $ Sex      : Factor w/ 2 levels &quot;Female&quot;,&quot;Male&quot;: 2 2 2 2 2 2 2 2 2 2 ...
 ##  $ Age      : int  27 29 30 32 46 58 59 59 63 63 ...
 ##  $ Improved : Ord.factor w/ 3 levels &quot;None&quot;&lt;&quot;Some&quot;&lt;..: 2 1 1 3 3 3 1 3 1 1 ...
 ##  - attr(*, &quot;.internal.selfref&quot;)=&lt;externalptr&gt;</code></pre>
-<p>2 columns have <code>factor</code> type, one has <code>ordinal</code> type.</p>
+<p>2 columns have <code>factor</code> type, one has <code>ordinal</code>
+type.</p>
 <blockquote>
 <p><code>ordinal</code> variable :</p>
 <ul>
-<li>can take a limited number of values (like <code>factor</code>) ;</li>
-<li>these values are ordered (unlike <code>factor</code>). Here these ordered values are: <code>Marked &gt; Some &gt; None</code></li>
+<li>can take a limited number of values (like <code>factor</code>)
+;</li>
+<li>these values are ordered (unlike <code>factor</code>). Here these
+ordered values are: <code>Marked &gt; Some &gt; None</code></li>
 </ul>
 </blockquote>
 </div>
-<div id="creation-of-new-features-based-on-old-ones" class="section level4">
-<h4><span class="header-section-number">1.2.2.2</span> Creation of new features based on old ones</h4>
-<p>We will add some new <em>categorical</em> features to see if it helps.</p>
-<div id="grouping-per-10-years" class="section level5">
-<h5><span class="header-section-number">1.2.2.2.1</span> Grouping per 10 years</h5>
-<p>For the first feature we create groups of age by rounding the real age.</p>
-<p>Note that we transform it to <code>factor</code> so the algorithm treat these age groups as independent values.</p>
-<p>Therefore, 20 is not closer to 30 than 60. To make it short, the distance between ages is lost in this transformation.</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb7-1" data-line-number="1"><span class="kw">head</span>(df[,AgeDiscret <span class="op">:</span><span class="er">=</span><span class="st"> </span><span class="kw">as.factor</span>(<span class="kw">round</span>(Age<span class="op">/</span><span class="dv">10</span>,<span class="dv">0</span>))])</a></code></pre></div>
+<div id="creation-of-new-features-based-on-old-ones" class="section level4" number="1.2.2.2">
+<h4><span class="header-section-number">1.2.2.2</span> Creation of new
+features based on old ones</h4>
+<p>We will add some new <em>categorical</em> features to see if it
+helps.</p>
+<div id="grouping-per-10-years" class="section level5" number="1.2.2.2.1">
+<h5><span class="header-section-number">1.2.2.2.1</span> Grouping per 10
+years</h5>
+<p>For the first feature we create groups of age by rounding the real
+age.</p>
+<p>Note that we transform it to <code>factor</code> so the algorithm
+treat these age groups as independent values.</p>
+<p>Therefore, 20 is not closer to 30 than 60. To make it short, the
+distance between ages is lost in this transformation.</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df[,<span class="at">AgeDiscret :=</span> <span class="fu">as.factor</span>(<span class="fu">round</span>(Age<span class="sc">/</span><span class="dv">10</span>,<span class="dv">0</span>))])</span></code></pre></div>
 <pre><code>##    ID Treatment  Sex Age Improved AgeDiscret
 ## 1: 57   Treated Male  27     Some          3
 ## 2: 46   Treated Male  29     None          3
@@ -414,10 +480,15 @@ margin-top: 5px; }
 ## 5: 36   Treated Male  46   Marked          5
 ## 6: 23   Treated Male  58   Marked          6</code></pre>
 </div>
-<div id="random-split-into-two-groups" class="section level5">
-<h5><span class="header-section-number">1.2.2.2.2</span> Random split into two groups</h5>
-<p>Following is an even stronger simplification of the real age with an arbitrary split at 30 years old. We choose this value <strong>based on nothing</strong>. We will see later if simplifying the information based on arbitrary values is a good strategy (you may already have an idea of how well it will work…).</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb9-1" data-line-number="1"><span class="kw">head</span>(df[,AgeCat<span class="op">:</span><span class="er">=</span><span class="st"> </span><span class="kw">as.factor</span>(<span class="kw">ifelse</span>(Age <span class="op">&gt;</span><span class="st"> </span><span class="dv">30</span>, <span class="st">&quot;Old&quot;</span>, <span class="st">&quot;Young&quot;</span>))])</a></code></pre></div>
+<div id="random-split-into-two-groups" class="section level5" number="1.2.2.2.2">
+<h5><span class="header-section-number">1.2.2.2.2</span> Random split
+into two groups</h5>
+<p>Following is an even stronger simplification of the real age with an
+arbitrary split at 30 years old. We choose this value <strong>based on
+nothing</strong>. We will see later if simplifying the information based
+on arbitrary values is a good strategy (you may already have an idea of
+how well it will work…).</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df[,<span class="at">AgeCat:=</span> <span class="fu">as.factor</span>(<span class="fu">ifelse</span>(Age <span class="sc">&gt;</span> <span class="dv">30</span>, <span class="st">&quot;Old&quot;</span>, <span class="st">&quot;Young&quot;</span>))])</span></code></pre></div>
 <pre><code>##    ID Treatment  Sex Age Improved AgeDiscret AgeCat
 ## 1: 57   Treated Male  27     Some          3  Young
 ## 2: 46   Treated Male  29     None          3  Young
@@ -426,29 +497,57 @@ margin-top: 5px; }
 ## 5: 36   Treated Male  46   Marked          5    Old
 ## 6: 23   Treated Male  58   Marked          6    Old</code></pre>
 </div>
-<div id="risks-in-adding-correlated-features" class="section level5">
-<h5><span class="header-section-number">1.2.2.2.3</span> Risks in adding correlated features</h5>
-<p>These new features are highly correlated to the <code>Age</code> feature because they are simple transformations of this feature.</p>
-<p>For many machine learning algorithms, using correlated features is not a good idea. It may sometimes make prediction less accurate, and most of the time make interpretation of the model almost impossible. GLM, for instance, assumes that the features are uncorrelated.</p>
-<p>Fortunately, decision tree algorithms (including boosted trees) are very robust to these features. Therefore we have nothing to do to manage this situation.</p>
+<div id="risks-in-adding-correlated-features" class="section level5" number="1.2.2.2.3">
+<h5><span class="header-section-number">1.2.2.2.3</span> Risks in adding
+correlated features</h5>
+<p>These new features are highly correlated to the <code>Age</code>
+feature because they are simple transformations of this feature.</p>
+<p>For many machine learning algorithms, using correlated features is
+not a good idea. It may sometimes make prediction less accurate, and
+most of the time make interpretation of the model almost impossible.
+GLM, for instance, assumes that the features are uncorrelated.</p>
+<p>Fortunately, decision tree algorithms (including boosted trees) are
+very robust to these features. Therefore we have nothing to do to manage
+this situation.</p>
 </div>
-<div id="cleaning-data" class="section level5">
-<h5><span class="header-section-number">1.2.2.2.4</span> Cleaning data</h5>
-<p>We remove ID as there is nothing to learn from this feature (it would just add some noise).</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb11-1" data-line-number="1">df[,ID<span class="op">:</span><span class="er">=</span><span class="ot">NULL</span>]</a></code></pre></div>
-<p>We will list the different values for the column <code>Treatment</code>:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb12-1" data-line-number="1"><span class="kw">levels</span>(df[,Treatment])</a></code></pre></div>
+<div id="cleaning-data" class="section level5" number="1.2.2.2.4">
+<h5><span class="header-section-number">1.2.2.2.4</span> Cleaning
+data</h5>
+<p>We remove ID as there is nothing to learn from this feature (it would
+just add some noise).</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>df[,ID<span class="sc">:</span><span class="er">=</span><span class="cn">NULL</span>]</span></code></pre></div>
+<p>We will list the different values for the column
+<code>Treatment</code>:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">levels</span>(df[,Treatment])</span></code></pre></div>
 <pre><code>## [1] &quot;Placebo&quot; &quot;Treated&quot;</code></pre>
 </div>
 </div>
-<div id="encoding-categorical-features" class="section level4">
-<h4><span class="header-section-number">1.2.2.3</span> Encoding categorical features</h4>
-<p>Next step, we will transform the categorical data to dummy variables. Several encoding methods exist, e.g., <a href="https://en.wikipedia.org/wiki/One-hot">one-hot encoding</a> is a common approach. We will use the <a href="https://stats.idre.ucla.edu/r/library/r-library-contrast-coding-systems-for-categorical-variables/">dummy contrast coding</a> which is popular because it produces “full rank” encoding (also see <a href="http://appliedpredictivemodeling.com/blog/2013/10/23/the-basics-of-encoding-categorical-data-for-predictive-models">this blog post by Max Kuhn</a>).</p>
-<p>The purpose is to transform each value of each <em>categorical</em> feature into a <em>binary</em> feature <code>{0, 1}</code>.</p>
-<p>For example, the column <code>Treatment</code> will be replaced by two columns, <code>TreatmentPlacebo</code>, and <code>TreatmentTreated</code>. Each of them will be <em>binary</em>. Therefore, an observation which has the value <code>Placebo</code> in column <code>Treatment</code> before the transformation will have after the transformation the value <code>1</code> in the new column <code>TreatmentPlacebo</code> and the value <code>0</code> in the new column <code>TreatmentTreated</code>. The column <code>TreatmentPlacebo</code> will disappear during the contrast encoding, as it would be absorbed into a common constant intercept column.</p>
-<p>Column <code>Improved</code> is excluded because it will be our <code>label</code> column, the one we want to predict.</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb14-1" data-line-number="1">sparse_matrix &lt;-<span class="st"> </span><span class="kw">sparse.model.matrix</span>(Improved <span class="op">~</span><span class="st"> </span>., <span class="dt">data =</span> df)[,<span class="op">-</span><span class="dv">1</span>]</a>
-<a class="sourceLine" id="cb14-2" data-line-number="2"><span class="kw">head</span>(sparse_matrix)</a></code></pre></div>
+<div id="encoding-categorical-features" class="section level4" number="1.2.2.3">
+<h4><span class="header-section-number">1.2.2.3</span> Encoding
+categorical features</h4>
+<p>Next step, we will transform the categorical data to dummy variables.
+Several encoding methods exist, e.g., <a href="https://en.wikipedia.org/wiki/One-hot">one-hot encoding</a> is a
+common approach. We will use the <a href="https://stats.oarc.ucla.edu/r/library/r-library-contrast-coding-systems-for-categorical-variables/">dummy
+contrast coding</a> which is popular because it produces “full rank”
+encoding (also see <a href="http://appliedpredictivemodeling.com/blog/2013/10/23/the-basics-of-encoding-categorical-data-for-predictive-models">this
+blog post by Max Kuhn</a>).</p>
+<p>The purpose is to transform each value of each <em>categorical</em>
+feature into a <em>binary</em> feature <code>{0, 1}</code>.</p>
+<p>For example, the column <code>Treatment</code> will be replaced by
+two columns, <code>TreatmentPlacebo</code>, and
+<code>TreatmentTreated</code>. Each of them will be <em>binary</em>.
+Therefore, an observation which has the value <code>Placebo</code> in
+column <code>Treatment</code> before the transformation will have after
+the transformation the value <code>1</code> in the new column
+<code>TreatmentPlacebo</code> and the value <code>0</code> in the new
+column <code>TreatmentTreated</code>. The column
+<code>TreatmentPlacebo</code> will disappear during the contrast
+encoding, as it would be absorbed into a common constant intercept
+column.</p>
+<p>Column <code>Improved</code> is excluded because it will be our
+<code>label</code> column, the one we want to predict.</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>sparse_matrix <span class="ot">&lt;-</span> <span class="fu">sparse.model.matrix</span>(Improved <span class="sc">~</span> ., <span class="at">data =</span> df)[,<span class="sc">-</span><span class="dv">1</span>]</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(sparse_matrix)</span></code></pre></div>
 <pre><code>## 6 x 9 sparse Matrix of class &quot;dgCMatrix&quot;
 ##   TreatmentTreated SexMale Age AgeDiscret3 AgeDiscret4 AgeDiscret5 AgeDiscret6
 ## 1                1       1  27           1           .           .           .
@@ -465,24 +564,34 @@ margin-top: 5px; }
 ## 5           .           .
 ## 6           .           .</code></pre>
 <blockquote>
-<p>Formula <code>Improved ~ .</code> used above means transform all <em>categorical</em> features but column <code>Improved</code> to binary values. The <code>-1</code> column selection removes the intercept column which is full of <code>1</code> (this column is generated by the conversion). For more information, you can type <code>?sparse.model.matrix</code> in the console.</p>
+<p>Formula <code>Improved ~ .</code> used above means transform all
+<em>categorical</em> features but column <code>Improved</code> to binary
+values. The <code>-1</code> column selection removes the intercept
+column which is full of <code>1</code> (this column is generated by the
+conversion). For more information, you can type
+<code>?sparse.model.matrix</code> in the console.</p>
 </blockquote>
-<p>Create the output <code>numeric</code> vector (not as a sparse <code>Matrix</code>):</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb16-1" data-line-number="1">output_vector =<span class="st"> </span>df[,Improved] <span class="op">==</span><span class="st"> &quot;Marked&quot;</span></a></code></pre></div>
+<p>Create the output <code>numeric</code> vector (not as a sparse
+<code>Matrix</code>):</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>output_vector <span class="ot">=</span> df[,Improved] <span class="sc">==</span> <span class="st">&quot;Marked&quot;</span></span></code></pre></div>
 <ol style="list-style-type: decimal">
 <li>set <code>Y</code> vector to <code>0</code>;</li>
-<li>set <code>Y</code> to <code>1</code> for rows where <code>Improved == Marked</code> is <code>TRUE</code> ;</li>
+<li>set <code>Y</code> to <code>1</code> for rows where
+<code>Improved == Marked</code> is <code>TRUE</code> ;</li>
 <li>return <code>Y</code> vector.</li>
 </ol>
 </div>
 </div>
 </div>
-<div id="build-the-model" class="section level2">
+<div id="build-the-model" class="section level2" number="1.3">
 <h2><span class="header-section-number">1.3</span> Build the model</h2>
-<p>The code below is very usual. For more information, you can look at the documentation of <code>xgboost</code> function (or at the vignette <a href="https://github.com/dmlc/xgboost/blob/master/R-package/vignettes/xgboostPresentation.Rmd">XGBoost presentation</a>).</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb17-1" data-line-number="1">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> sparse_matrix, <span class="dt">label =</span> output_vector, <span class="dt">max_depth =</span> <span class="dv">4</span>,</a>
-<a class="sourceLine" id="cb17-2" data-line-number="2">               <span class="dt">eta =</span> <span class="dv">1</span>, <span class="dt">nthread =</span> <span class="dv">2</span>, <span class="dt">nrounds =</span> <span class="dv">10</span>,<span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [02:03:22] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+<p>The code below is very usual. For more information, you can look at
+the documentation of <code>xgboost</code> function (or at the vignette
+<a href="https://github.com/dmlc/xgboost/blob/master/R-package/vignettes/xgboostPresentation.Rmd">XGBoost
+presentation</a>).</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgboost</span>(<span class="at">data =</span> sparse_matrix, <span class="at">label =</span> output_vector, <span class="at">max_depth =</span> <span class="dv">4</span>,</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>               <span class="at">eta =</span> <span class="dv">1</span>, <span class="at">nthread =</span> <span class="dv">2</span>, <span class="at">nrounds =</span> <span class="dv">10</span>,<span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</span></code></pre></div>
+<pre><code>## [08:44:30] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective &#39;binary:logistic&#39; was changed from &#39;error&#39; to &#39;logloss&#39;. Explicitly set eval_metric if you&#39;d like to restore the old behavior.
 ## [1]  train-logloss:0.485466 
 ## [2]  train-logloss:0.438534 
 ## [3]  train-logloss:0.412250 
@@ -493,23 +602,33 @@ margin-top: 5px; }
 ## [8]  train-logloss:0.351232 
 ## [9]  train-logloss:0.341678 
 ## [10] train-logloss:0.334465</code></pre>
-<p>You can see some <code>train-error: 0.XXXXX</code> lines followed by a number. It decreases. Each line shows how well the model explains your data. Lower is better.</p>
-<p>A small value for training error may be a symptom of <a href="https://en.wikipedia.org/wiki/Overfitting">overfitting</a>, meaning the model will not accurately predict the future values.</p>
+<p>You can see some <code>train-error: 0.XXXXX</code> lines followed by
+a number. It decreases. Each line shows how well the model explains your
+data. Lower is better.</p>
+<p>A small value for training error may be a symptom of <a href="https://en.wikipedia.org/wiki/Overfitting">overfitting</a>,
+meaning the model will not accurately predict the future values.</p>
 <blockquote>
-<p>Here you can see the numbers decrease until line 7 and then increase.</p>
-<p>It probably means we are overfitting. To fix that I should reduce the number of rounds to <code>nrounds = 4</code>. I will let things like that because I don’t really care for the purpose of this example :-)</p>
+<p>Here you can see the numbers decrease until line 7 and then
+increase.</p>
+<p>It probably means we are overfitting. To fix that I should reduce the
+number of rounds to <code>nrounds = 4</code>. I will let things like
+that because I don’t really care for the purpose of this example :-)</p>
 </blockquote>
 </div>
-<div id="feature-importance" class="section level2">
-<h2><span class="header-section-number">1.4</span> Feature importance</h2>
+<div id="feature-importance" class="section level2" number="1.4">
+<h2><span class="header-section-number">1.4</span> Feature
+importance</h2>
 </div>
-<div id="measure-feature-importance" class="section level2">
-<h2><span class="header-section-number">1.5</span> Measure feature importance</h2>
-<div id="build-the-feature-importance-data.table" class="section level3">
-<h3><span class="header-section-number">1.5.1</span> Build the feature importance data.table</h3>
-<p>Remember, each binary column corresponds to a single value of one of <em>categorical</em> features.</p>
-<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb19-1" data-line-number="1">importance &lt;-<span class="st"> </span><span class="kw">xgb.importance</span>(<span class="dt">feature_names =</span> <span class="kw">colnames</span>(sparse_matrix), <span class="dt">model =</span> bst)</a>
-<a class="sourceLine" id="cb19-2" data-line-number="2"><span class="kw">head</span>(importance)</a></code></pre></div>
+<div id="measure-feature-importance" class="section level2" number="1.5">
+<h2><span class="header-section-number">1.5</span> Measure feature
+importance</h2>
+<div id="build-the-feature-importance-data.table" class="section level3" number="1.5.1">
+<h3><span class="header-section-number">1.5.1</span> Build the feature
+importance data.table</h3>
+<p>Remember, each binary column corresponds to a single value of one of
+<em>categorical</em> features.</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>importance <span class="ot">&lt;-</span> <span class="fu">xgb.importance</span>(<span class="at">feature_names =</span> <span class="fu">colnames</span>(sparse_matrix), <span class="at">model =</span> bst)</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(importance)</span></code></pre></div>
 <pre><code>##             Feature        Gain      Cover  Frequency
 ## 1:              Age 0.622031768 0.67251696 0.67241379
 ## 2: TreatmentTreated 0.285750540 0.11916651 0.10344828
@@ -518,24 +637,43 @@ margin-top: 5px; }
 ## 5:      AgeDiscret3 0.016373781 0.08028951 0.05172414
 ## 6:      AgeDiscret4 0.009270558 0.02858801 0.01724138</code></pre>
 <blockquote>
-<p>The column <code>Gain</code> provide the information we are looking for.</p>
+<p>The column <code>Gain</code> provide the information we are looking
+for.</p>
 <p>As you can see, features are classified by <code>Gain</code>.</p>
 </blockquote>
-<p><code>Gain</code> is the improvement in accuracy brought by a feature to the branches it is on. The idea is that before adding a new split on a feature X to the branch there was some wrongly classified elements, after adding the split on this feature, there are two new branches, and each of these branch is more accurate (one branch saying if your observation is on this branch then it should be classified as <code>1</code>, and the other branch saying the exact opposite).</p>
-<p><code>Cover</code> measures the relative quantity of observations concerned by a feature.</p>
-<p><code>Frequency</code> is a simpler way to measure the <code>Gain</code>. It just counts the number of times a feature is used in all generated trees. You should not use it (unless you know why you want to use it).</p>
-<div id="improvement-in-the-interpretability-of-feature-importance-data.table" class="section level4">
-<h4><span class="header-section-number">1.5.1.1</span> Improvement in the interpretability of feature importance data.table</h4>
-<p>We can go deeper in the analysis of the model. In the <code>data.table</code> above, we have discovered which features counts to predict if the illness will go or not. But we don’t yet know the role of these features. For instance, one of the question we may want to answer would be: does receiving a placebo treatment helps to recover from the illness?</p>
-<p>One simple solution is to count the co-occurrences of a feature and a class of the classification.</p>
-<p>For that purpose we will execute the same function as above but using two more parameters, <code>data</code> and <code>label</code>.</p>
-<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb21-1" data-line-number="1">importanceRaw &lt;-<span class="st"> </span><span class="kw">xgb.importance</span>(<span class="dt">feature_names =</span> <span class="kw">colnames</span>(sparse_matrix), <span class="dt">model =</span> bst, <span class="dt">data =</span> sparse_matrix, <span class="dt">label =</span> output_vector)</a></code></pre></div>
+<p><code>Gain</code> is the improvement in accuracy brought by a feature
+to the branches it is on. The idea is that before adding a new split on
+a feature X to the branch there was some wrongly classified elements,
+after adding the split on this feature, there are two new branches, and
+each of these branch is more accurate (one branch saying if your
+observation is on this branch then it should be classified as
+<code>1</code>, and the other branch saying the exact opposite).</p>
+<p><code>Cover</code> measures the relative quantity of observations
+concerned by a feature.</p>
+<p><code>Frequency</code> is a simpler way to measure the
+<code>Gain</code>. It just counts the number of times a feature is used
+in all generated trees. You should not use it (unless you know why you
+want to use it).</p>
+<div id="improvement-in-the-interpretability-of-feature-importance-data.table" class="section level4" number="1.5.1.1">
+<h4><span class="header-section-number">1.5.1.1</span> Improvement in
+the interpretability of feature importance data.table</h4>
+<p>We can go deeper in the analysis of the model. In the
+<code>data.table</code> above, we have discovered which features counts
+to predict if the illness will go or not. But we don’t yet know the role
+of these features. For instance, one of the question we may want to
+answer would be: does receiving a placebo treatment helps to recover
+from the illness?</p>
+<p>One simple solution is to count the co-occurrences of a feature and a
+class of the classification.</p>
+<p>For that purpose we will execute the same function as above but using
+two more parameters, <code>data</code> and <code>label</code>.</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>importanceRaw <span class="ot">&lt;-</span> <span class="fu">xgb.importance</span>(<span class="at">feature_names =</span> <span class="fu">colnames</span>(sparse_matrix), <span class="at">model =</span> bst, <span class="at">data =</span> sparse_matrix, <span class="at">label =</span> output_vector)</span></code></pre></div>
 <pre><code>## Warning in xgb.importance(feature_names = colnames(sparse_matrix), model =
-## bst, : xgb.importance: parameters 'data', 'label' and 'target' are deprecated</code></pre>
-<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb23-1" data-line-number="1"><span class="co"># Cleaning for better display</span></a>
-<a class="sourceLine" id="cb23-2" data-line-number="2">importanceClean &lt;-<span class="st"> </span>importanceRaw[,<span class="st">`</span><span class="dt">:=</span><span class="st">`</span>(<span class="dt">Cover=</span><span class="ot">NULL</span>, <span class="dt">Frequency=</span><span class="ot">NULL</span>)]</a>
-<a class="sourceLine" id="cb23-3" data-line-number="3"></a>
-<a class="sourceLine" id="cb23-4" data-line-number="4"><span class="kw">head</span>(importanceClean)</a></code></pre></div>
+## bst, : xgb.importance: parameters &#39;data&#39;, &#39;label&#39; and &#39;target&#39; are deprecated</code></pre>
+<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Cleaning for better display</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>importanceClean <span class="ot">&lt;-</span> importanceRaw[,<span class="st">`</span><span class="at">:=</span><span class="st">`</span>(<span class="at">Cover=</span><span class="cn">NULL</span>, <span class="at">Frequency=</span><span class="cn">NULL</span>)]</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(importanceClean)</span></code></pre></div>
 <pre><code>##             Feature        Gain
 ## 1:              Age 0.622031768
 ## 2: TreatmentTreated 0.285750540
@@ -544,104 +682,182 @@ margin-top: 5px; }
 ## 5:      AgeDiscret3 0.016373781
 ## 6:      AgeDiscret4 0.009270558</code></pre>
 <blockquote>
-<p>In the table above we have removed two not needed columns and select only the first lines.</p>
+<p>In the table above we have removed two not needed columns and select
+only the first lines.</p>
 </blockquote>
-<p>First thing you notice is the new column <code>Split</code>. It is the split applied to the feature on a branch of one of the tree. Each split is present, therefore a feature can appear several times in this table. Here we can see the feature <code>Age</code> is used several times with different splits.</p>
-<p>How the split is applied to count the co-occurrences? It is always <code>&lt;</code>. For instance, in the second line, we measure the number of persons under 61.5 years with the illness gone after the treatment.</p>
-<p>The two other new columns are <code>RealCover</code> and <code>RealCover %</code>. In the first column it measures the number of observations in the dataset where the split is respected and the label marked as <code>1</code>. The second column is the percentage of the whole population that <code>RealCover</code> represents.</p>
-<p>Therefore, according to our findings, getting a placebo doesn’t seem to help but being younger than 61 years may help (seems logic).</p>
+<p>First thing you notice is the new column <code>Split</code>. It is
+the split applied to the feature on a branch of one of the tree. Each
+split is present, therefore a feature can appear several times in this
+table. Here we can see the feature <code>Age</code> is used several
+times with different splits.</p>
+<p>How the split is applied to count the co-occurrences? It is always
+<code>&lt;</code>. For instance, in the second line, we measure the
+number of persons under 61.5 years with the illness gone after the
+treatment.</p>
+<p>The two other new columns are <code>RealCover</code> and
+<code>RealCover %</code>. In the first column it measures the number of
+observations in the dataset where the split is respected and the label
+marked as <code>1</code>. The second column is the percentage of the
+whole population that <code>RealCover</code> represents.</p>
+<p>Therefore, according to our findings, getting a placebo doesn’t seem
+to help but being younger than 61 years may help (seems logic).</p>
 <blockquote>
-<p>You may wonder how to interpret the <code>&lt; 1.00001</code> on the first line. Basically, in a sparse <code>Matrix</code>, there is no <code>0</code>, therefore, looking for one hot-encoded categorical observations validating the rule <code>&lt; 1.00001</code> is like just looking for <code>1</code> for this feature.</p>
+<p>You may wonder how to interpret the <code>&lt; 1.00001</code> on the
+first line. Basically, in a sparse <code>Matrix</code>, there is no
+<code>0</code>, therefore, looking for one hot-encoded categorical
+observations validating the rule <code>&lt; 1.00001</code> is like just
+looking for <code>1</code> for this feature.</p>
 </blockquote>
 </div>
 </div>
-<div id="plotting-the-feature-importance" class="section level3">
-<h3><span class="header-section-number">1.5.2</span> Plotting the feature importance</h3>
-<p>All these things are nice, but it would be even better to plot the results.</p>
-<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb25-1" data-line-number="1"><span class="kw">xgb.plot.importance</span>(<span class="dt">importance_matrix =</span> importance)</a></code></pre></div>
-<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAwAAAAHgCAMAAAAlhPoXAAAC6FBMVEUAAAABAQECAgIDAwMEBAQFBQUGBgYHBwcICAgJCQkKCgoLCwsMDAwNDQ0ODg4PDw8QEBARERESEhITExMUFBQVFRUWFhYXFxcYGBgZGRkaGhobGxscHBwdHR0eHh4fHx8gICAhISEiIiIjIyMkJCQlJSUmJiYnJycoKCgpKSkqKiorKyssLCwtLS0uLi4vLy8wMDAxMTEyMjIzMzM0NDQ1NTU2NjY3Nzc4ODg7Ozs9PT0+Pj4/Pz9AQEBBQUFCQkJDQ0NERERFRUVGRkZHR0dISEhJSUlKSkpLS0tMTExNTU1OTk5PT09QUFBRUVFSUlJTU1NVVVVWVlZXV1dYWFhZWVlaWlpbW1tcXFxdXV1eXl5fX19gYGBhYWFiYmJkZGRlZWVmZmZnZ2doaGhpaWlqampra2tsbGxtbW1ubm5vb29wcHBxcXFycnJzc3N0dHR1dXV2dnZ3d3d4eHh5eXl6enp7e3t8fHx9fX1+fn5/f3+AgICBgYGCgoKDg4OEhISFhYWGhoaHh4eIiIiJiYmKioqLi4uMjIyNjY2Ojo6QkJCRkZGSkpKTk5OUlJSVlZWWlpaXl5eYmJiZmZmampqbm5ucnJydnZ2enp6fn5+goKChoaGioqKjo6OkpKSlpaWmpqanp6eoqKipqamqqqqrq6usrKytra2urq6vr6+wsLCxsbGysrKzs7O0tLS1tbW2tra3t7e4uLi5ubm7u7u8vLy9vb2+vr6/v7/AwMDBwcHCwsLDw8PExMTFxcXGxsbHx8fIyMjJycnKysrLy8vMzMzNzc3Ozs7Pz8/Q0NDR0dHT09PU1NTV1dXW1tbX19fY2NjZ2dna2trb29vc3Nzd3d3e3t7f39/g4ODh4eHi4uLj4+Pk5OTl5eXm5ubn5+fo6Ojp6enq6urr6+vs7Ozt7e3u7u7v7+/w8PDx8fHy8vLz8/P09PT19fX29vb39/f4+Pj5+fn6+vr7+/v8/Pz9/f3+/v7///+IwBxJAAAACXBIWXMAAA7DAAAOwwHHb6hkAAASk0lEQVR4nO3de2BU5Z2H8cP9knC3y6XcQUXACiJFC9uVbYW2WMRW3FZLkcoqeMOKLtYgogK6WLECCl7oCqhYaUVujVKouougwCpdSqUENEAExAgBAu+/eybM0AzJgZOTd3LmnO/z+WPGmTnza3LmfZghpr6OAYQ5YX8BQJgIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANIIANLiEUA+kM7v0iEAxJLfpUMAiCW/S4cAEEt+lw4BIJb8Lh0CQCz5XToEgFjyu3QIALHkd+kQAGLJ79IhAMSS36VDAIglv0uHABBLfpdO9gYwxXnc97Fhn21kHb9LJ3sD6Nmpv+9jwz7byDp+l07WBrCpzipnu9+Dwz7byDp+l07WBjBxsLngEfc6v0/zEWPyzF+vatpllufBYZ9tZB2/6yxrA+g8z9zbx5iCnBf2POnkHe36wJ4/tn7J6+Cwzzayjt91lq0BvFvvs5I/O1vNoz9wb/TLe6OXezX9p15Hh322kXX8LrRsDWC8kzDZjL3dvfHjvF83aOMa5nV02GcbWcfvQsvSAE60mede3tfTTL3avb48b/Fl7lXRp16Hh322kXX8rrQsDWB1vf3u5QfO5u2NFx14puHkg//06wPrO873Ojzss42s43elZWkAo79fdnX+JPNmz1Zjxz1pPhiU23Ga5+Fhn21kHb8rLUsDOK0g370Y+so5jgr7bCPr+F1g2R7AR3VfP7S4xaFzHBX22UbW8bvAsj0As7BP2yvWnOugsM82so7f9ZX1AfgS9tlG1vG7dAgAseR36RAAYsnv0iEAxJLfpUMAiCW/S4cAEEt+lw4BIJb8Lh0CQCz5XToEgFjyu3TiEQAQEAFAGgFAGgFAGgFAGgFAGgFAWjwCCPuHzmEI+5zHBAFEVdjnPCYIIKrCPucxQQBRFfY5jwkCiKqwz3lMEEBUhX3OY4IAoirscx4TBBBVYZ/zmCCAqAr7nMcEAURV2Oc8JgggqsI+5zFBAFEV9jmP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BJCBoQQQHZu+mYmprT335a6G61/LwNB5t2Rg6I4LMzDUnL8zA0PHPhf8ubEIwBRFZujB4xkYetT6hgsJ0Tmph44Gf248AgACIgBIIwBIIwBIIwBIIwBIIwBIIwBIIwBIIwBIIwBIIwBIIwBIi3QAz/VrNmhdpTesTTXm9gm2hx6d2qNxz+nH7A794tbOOX0XVn/mmd/+8St+YmFo2tQlTsJou0PN+qtadJle9RlRDuC3zp2vDW/0YSU3rE01J5fn2AggbejEhg+vyGsw3u7Qa1vPXTHaWWZ3qGuCYyOAtKnTWs92vW136Prc65fcXWtmlYdEOYBvjDSmtMdNldywNvV3TRzHRgDlh55odJ97+WC9IzaHfu487172rv5iPeM8Lm3RyUYAaVNv+o6FiWcOHf5d9+Kua6o8JMIB7HSWuJcT21a8YW2qObBlSwcLAaQNLeiReNte4Pzd5tBPfrbDvfznG6o588zz+EmL311uIYD0qd++df/GA5aHflFnUbApEQ7gPSfx30SdXbu0wg1rUxO6Wwig4ld3eGD3E5aH7ln3YJO3qjnzjKFHL7vD2AggfWqHHvUd55p9Vodudl6+qnn3B6r+fw2LcABvOtvcy4XO3go3rE1NsBFAhaEbL2vyju2hjzb62g1f2R16y4BjVgJIm1rS6LsfH1ra6mqrQ1c6rfKWPZzz71WeEuEA3nM2updzah+rcMPa1AQ77wBpQz8fVXv4DttDXSdHVntVpQ1d0tL9mGbnHaDCqzPTOWhz6NvOY+7lI7Wr/CdAhAPY6Sx1Lye1qXjD2tQEGwGkD/2/dr3/p/oz04e++dPE5bNOdT9XpQ293Tnl9WoOrezVWV7257e1oducxE+VVjhbqzolwgGY3qPdP/Qu+XklN6xNNXYCSBt6stdV1f4BUIWhq8r+OLy5ndWhf1ntuujK1dX+XJk2dXXD1e7l/c2q22ra0NKOU9zLBxpW+RNAlANYUPvxd8Y02uS+DV5X8o8bVqcaSwGUH7rOuePZhMM2hx67pPuLK39ZZ5bVr7TsDhsfgdKmnujXfvry/6j/G6tDzaz6eSvy6j9U5SFRDsA837fpwMTfJUc7xf+4YXeqpQDKD52T/GBRaHOoKbi+Xc6lL1Z7ZIVv304AaVMLR7XN/ebLloea2X1zLp59ssozIh0AUF0EAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGkEAGn/D5jCylINx7a1AAAAAElFTkSuQmCC" style="display: block; margin: auto;" /></p>
-<p>Feature have automatically been divided in 2 clusters: the interesting features… and the others.</p>
+<div id="plotting-the-feature-importance" class="section level3" number="1.5.2">
+<h3><span class="header-section-number">1.5.2</span> Plotting the
+feature importance</h3>
+<p>All these things are nice, but it would be even better to plot the
+results.</p>
+<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">xgb.plot.importance</span>(<span class="at">importance_matrix =</span> importance)</span></code></pre></div>
+<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAwAAAAHgCAMAAAAlhPoXAAAC7lBMVEUAAAABAQECAgIDAwMEBAQFBQUGBgYHBwcICAgJCQkKCgoLCwsMDAwNDQ0ODg4PDw8QEBARERESEhITExMUFBQVFRUWFhYXFxcYGBgZGRkaGhobGxscHBwdHR0eHh4fHx8gICAhISEiIiIjIyMkJCQlJSUmJiYnJycoKCgpKSkqKiorKyssLCwtLS0uLi4vLy8wMDAxMTEyMjIzMzM0NDQ1NTU2NjY3Nzc4ODg5OTk6Ojo7Ozs8PDw9PT0+Pj4/Pz9AQEBBQUFCQkJDQ0NERERFRUVGRkZHR0dISEhJSUlKSkpLS0tMTExNTU1OTk5PT09QUFBRUVFSUlJTU1NUVFRVVVVWVlZXV1dYWFhZWVlaWlpbW1tcXFxdXV1eXl5fX19gYGBhYWFiYmJjY2NkZGRlZWVmZmZnZ2dpaWlqampra2ttbW1ubm5vb29ycnJzc3N0dHR1dXV2dnZ3d3d4eHh5eXl6enp7e3t8fHx9fX1+fn5/f3+AgICBgYGDg4OEhISFhYWGhoaHh4eIiIiJiYmKioqLi4uMjIyNjY2Ojo6Pj4+QkJCRkZGSkpKTk5OUlJSVlZWWlpaXl5eYmJiZmZmampqbm5ucnJydnZ2fn5+goKChoaGioqKjo6OkpKSlpaWmpqanp6eoqKipqamqqqqrq6usrKytra2urq6vr6+wsLCxsbGysrKzs7O0tLS1tbW2tra3t7e4uLi5ubm6urq7u7u8vLy9vb2+vr6/v7/AwMDBwcHCwsLDw8PExMTFxcXGxsbHx8fIyMjJycnKysrLy8vMzMzNzc3Ozs7Pz8/Q0NDR0dHS0tLT09PU1NTV1dXW1tbX19fY2NjZ2dna2trb29vc3Nzd3d3e3t7f39/g4ODh4eHi4uLj4+Pk5OTl5eXm5ubn5+fo6Ojp6enq6urr6+vs7Ozt7e3u7u7v7+/w8PDx8fHy8vLz8/P09PT19fX29vb39/f4+Pj5+fn6+vr7+/v8/Pz9/f3+/v7///8asQJGAAAACXBIWXMAAA7DAAAOwwHHb6hkAAASGklEQVR4nO3de3xU5Z3H8QOBXEBNAGVQiBEikUtKa12Rbotub24v663KoraKS8EurMtFwGirdi1UFF0VpAqlUqjVtQili1ewFi0i0hZqwXW7KBKokVKCSgNJnv/2TDJTMyQnnJw8kzPnfD/v16szzMyZX/N6cj4Ok4Q8jgGEOWF/AECYCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADSCADS4hHA80Amv6cOASCW/J46BIBY8nvqEABiye+pQwCIJb+nDgEglvyeOgSAWPJ76hAAYsnvqUMAiCW/pw4BIJb8njoEgFjye+oQAGLJ76lDAIglv6dO7gZwV8nDvo8Ne7WRc/yeOjkbQGPFinN8Hxz2aiPn+D11cjaAp8aaEZvd65Xl5ZOvm21eHVsx8i7Pg8NebeQcv+dZzgZwySNmwURj9hU8Y9YUVtX2X2LeHfKk18FhrzZyjt/zLFcDePuUw2Z/3wPmsSHujcqqVQPcq1vHex0d9moj5/g90XI1gJvyi4uLe95rFo52b1xU9WB+WVnZqRd6HR32aiPn+D3RcjSAI4mt7uXTI8zKCvd6VNXqsnYPD3u1kXP8nmk5GsCK4cnL+v4bduW9Ytb1dt8DrDR109d4HR72aiPn+D3TcjSAz9zedDX1SnN/6cgbxt1sXh1bXjax1uvwsFcbOcfvmZajAXykwf3fhQuOc1DYq42c4/f8yvUA6hKPmu1FW45zVNirjZzj9wTL9QDMusrTKx463kFhrzZyjt/zK+cD8CXs1UbO8XvqEABiye+pQwCIJb+nDgEglvyeOgSAWPJ76hAAYsnvqUMAiCW/pw4BIJb8njoEgFjye+rEIwAgIAKANAKANAKANAKANAKANAKAtHgEEPYXncMQ9prHBAFEVdhrHhMEEFVhr3lMEEBUhb3mMUEAURX2mscEAURV2GseEwQQVWGveUwQQFSFveYxQQBRFfaaxwQBRFXYax4TBBBVYa95TBBAVIW95jFB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yUmy8CPcGR/q1vOLTp3W8R81jHIAC3ve/fLt3X/exg1rU6svGN7DRgAZQ6sK7nzhu93vtDt0XP8lv/yP7t+1O9R1Yw8bAWRMveDi9a6ddoe+1eeajctLZnd4SJQDKJ3mXowf08YNa1PvvOJQgY0AWg49etIc93Jc5/8RT8uh+4uXuZdXnG11qOt3RZNsBJAx9ZPTLEw8duiUUY3GPLO2w0MiHMAOZ717+Ui3g61uWJtqdhtjI4CMoQ3/82f3clqp1aHNvnGO5aENY2YusBBA5tQzv935ia2GnjYv2JQIB7DGSf7roo3OllY3rE1NshFA64/u6Meusj30wz0/KPix5aEPnPGBjQAypyYCnqvtDd3vLLm632kzjnR4SoQDWO78xb3c5jzX6oa1qUk2Amj90c3otcP20AuckuWdnXnM0OritcZGAJlTe11xbu8hsz6wOnSHU3rn5v8slHoPEOUAZuWvtj70d2tnFt5vd+gV44z9ABpKPrFi4/zeV1sdus2Z4l7OLuzwS0CEA1jrvOVevui81uqGtalJNgI4ZmjDpBOfsT406ZbCQzaHru1TbSeANj7U7zs1Nofuch5quuuNjk6JcABvOsmzaEneoVY3rE1NshHAMUOn9Ov0W5Vjh76zNPkP4590Xrc59LpueXl53Z28ezs5tK3Pzjpns82h9UV3uJerm5rokAgHYM5M/jaQr3y2jRvWpho7AWQOXVbY2c9966G/dVa4l7d16/TfrFsOfWeba1ZiW+d/lUPLqTsv3+5e3tq9s68AmYt68d+5F9NKOvydwCgH8KMe8389p/sGYx74dIsbVqduWb++59T16w/bHPrhoHHJbwSt78Tv8mjjI/1Sv8W/vLvXNzs7M3Noko2/AmVMrRty1mMb5xVNtjrUvNJz4q8WFMzt8JAoB2AWDcmvTP6iqVl5LW5YnXpe03ftnf+zOXRr80xnr82h5uCMwYVDb/mw0zMzF9VYCiBj6q6vJ4oqF1j4BUkZH+q6s/MHfqfjPwoS6QCAziIASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASPt/dAzMJMiGBjYAAAAASUVORK5CYII=" style="display: block; margin: auto;" /></p>
+<p>Feature have automatically been divided in 2 clusters: the
+interesting features… and the others.</p>
 <blockquote>
-<p>Depending of the dataset and the learning parameters you may have more than two clusters. Default value is to limit them to <code>10</code>, but you can increase this limit. Look at the function documentation for more information.</p>
+<p>Depending of the dataset and the learning parameters you may have
+more than two clusters. Default value is to limit them to
+<code>10</code>, but you can increase this limit. Look at the function
+documentation for more information.</p>
 </blockquote>
-<p>According to the plot above, the most important features in this dataset to predict if the treatment will work are :</p>
+<p>According to the plot above, the most important features in this
+dataset to predict if the treatment will work are :</p>
 <ul>
 <li>the Age ;</li>
 <li>having received a placebo or not ;</li>
-<li>the sex is third but already included in the not interesting features group ;</li>
-<li>then we see our generated features (AgeDiscret). We can see that their contribution is very low.</li>
+<li>the sex is third but already included in the not interesting
+features group ;</li>
+<li>then we see our generated features (AgeDiscret). We can see that
+their contribution is very low.</li>
 </ul>
 </div>
-<div id="do-these-results-make-sense" class="section level3">
-<h3><span class="header-section-number">1.5.3</span> Do these results make sense?</h3>
-<p>Let’s check some <strong>Chi2</strong> between each of these features and the label.</p>
+<div id="do-these-results-make-sense" class="section level3" number="1.5.3">
+<h3><span class="header-section-number">1.5.3</span> Do these results
+make sense?</h3>
+<p>Let’s check some <strong>Chi2</strong> between each of these features
+and the label.</p>
 <p>Higher <strong>Chi2</strong> means better correlation.</p>
-<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb26-1" data-line-number="1">c2 &lt;-<span class="st"> </span><span class="kw">chisq.test</span>(df<span class="op">$</span>Age, output_vector)</a>
-<a class="sourceLine" id="cb26-2" data-line-number="2"><span class="kw">print</span>(c2)</a></code></pre></div>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>c2 <span class="ot">&lt;-</span> <span class="fu">chisq.test</span>(df<span class="sc">$</span>Age, output_vector)</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(c2)</span></code></pre></div>
 <pre><code>## 
-##  Pearson's Chi-squared test
+##  Pearson&#39;s Chi-squared test
 ## 
 ## data:  df$Age and output_vector
 ## X-squared = 35.475, df = 35, p-value = 0.4458</code></pre>
-<p>Pearson correlation between Age and illness disappearing is <strong>35.48</strong>.</p>
-<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb28-1" data-line-number="1">c2 &lt;-<span class="st"> </span><span class="kw">chisq.test</span>(df<span class="op">$</span>AgeDiscret, output_vector)</a>
-<a class="sourceLine" id="cb28-2" data-line-number="2"><span class="kw">print</span>(c2)</a></code></pre></div>
+<p>Pearson correlation between Age and illness disappearing is
+<strong>35.48</strong>.</p>
+<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>c2 <span class="ot">&lt;-</span> <span class="fu">chisq.test</span>(df<span class="sc">$</span>AgeDiscret, output_vector)</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(c2)</span></code></pre></div>
 <pre><code>## 
-##  Pearson's Chi-squared test
+##  Pearson&#39;s Chi-squared test
 ## 
 ## data:  df$AgeDiscret and output_vector
 ## X-squared = 8.2554, df = 5, p-value = 0.1427</code></pre>
-<p>Our first simplification of Age gives a Pearson correlation is <strong>8.26</strong>.</p>
-<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb30-1" data-line-number="1">c2 &lt;-<span class="st"> </span><span class="kw">chisq.test</span>(df<span class="op">$</span>AgeCat, output_vector)</a>
-<a class="sourceLine" id="cb30-2" data-line-number="2"><span class="kw">print</span>(c2)</a></code></pre></div>
+<p>Our first simplification of Age gives a Pearson correlation is
+<strong>8.26</strong>.</p>
+<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>c2 <span class="ot">&lt;-</span> <span class="fu">chisq.test</span>(df<span class="sc">$</span>AgeCat, output_vector)</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(c2)</span></code></pre></div>
 <pre><code>## 
-##  Pearson's Chi-squared test with Yates' continuity correction
+##  Pearson&#39;s Chi-squared test with Yates&#39; continuity correction
 ## 
 ## data:  df$AgeCat and output_vector
 ## X-squared = 2.3571, df = 1, p-value = 0.1247</code></pre>
-<p>The perfectly random split I did between young and old at 30 years old have a low correlation of <strong>2.36</strong>. It’s a result we may expect as may be in my mind &gt; 30 years is being old (I am 32 and starting feeling old, this may explain that), but for the illness we are studying, the age to be vulnerable is not the same.</p>
-<p>Morality: don’t let your <em>gut</em> lower the quality of your model.</p>
-<p>In <em>data science</em> expression, there is the word <em>science</em> :-)</p>
+<p>The perfectly random split I did between young and old at 30 years
+old have a low correlation of <strong>2.36</strong>. It’s a result we
+may expect as may be in my mind &gt; 30 years is being old (I am 32 and
+starting feeling old, this may explain that), but for the illness we are
+studying, the age to be vulnerable is not the same.</p>
+<p>Morality: don’t let your <em>gut</em> lower the quality of your
+model.</p>
+<p>In <em>data science</em> expression, there is the word
+<em>science</em> :-)</p>
 </div>
 </div>
-<div id="conclusion" class="section level2">
+<div id="conclusion" class="section level2" number="1.6">
 <h2><span class="header-section-number">1.6</span> Conclusion</h2>
-<p>As you can see, in general <em>destroying information by simplifying it won’t improve your model</em>. <strong>Chi2</strong> just demonstrates that.</p>
-<p>But in more complex cases, creating a new feature based on existing one which makes link with the outcome more obvious may help the algorithm and improve the model.</p>
-<p>The case studied here is not enough complex to show that. Check <a href="http://www.kaggle.com/">Kaggle website</a> for some challenging datasets. However it’s almost always worse when you add some arbitrary rules.</p>
-<p>Moreover, you can notice that even if we have added some not useful new features highly correlated with other features, the boosting tree algorithm have been able to choose the best one, which in this case is the Age.</p>
+<p>As you can see, in general <em>destroying information by simplifying
+it won’t improve your model</em>. <strong>Chi2</strong> just
+demonstrates that.</p>
+<p>But in more complex cases, creating a new feature based on existing
+one which makes link with the outcome more obvious may help the
+algorithm and improve the model.</p>
+<p>The case studied here is not enough complex to show that. Check <a href="http://www.kaggle.com/">Kaggle website</a> for some challenging
+datasets. However it’s almost always worse when you add some arbitrary
+rules.</p>
+<p>Moreover, you can notice that even if we have added some not useful
+new features highly correlated with other features, the boosting tree
+algorithm have been able to choose the best one, which in this case is
+the Age.</p>
 <p>Linear model may not be that smart in this scenario.</p>
 </div>
-<div id="special-note-what-about-random-forests" class="section level2">
-<h2><span class="header-section-number">1.7</span> Special Note: What about Random Forests™?</h2>
-<p>As you may know, <a href="https://en.wikipedia.org/wiki/Random_forest">Random Forests</a> algorithm is cousin with boosting and both are part of the <a href="https://en.wikipedia.org/wiki/Ensemble_learning">ensemble learning</a> family.</p>
-<p>Both trains several decision trees for one dataset. The <em>main</em> difference is that in Random Forests, trees are independent and in boosting, the tree <code>N+1</code> focus its learning on the loss (&lt;=&gt; what has not been well modeled by the tree <code>N</code>).</p>
-<p>This difference have an impact on a corner case in feature importance analysis: the <em>correlated features</em>.</p>
-<p>Imagine two features perfectly correlated, feature <code>A</code> and feature <code>B</code>. For one specific tree, if the algorithm needs one of them, it will choose randomly (true in both boosting and Random Forests).</p>
-<p>However, in Random Forests this random choice will be done for each tree, because each tree is independent from the others. Therefore, approximatively, depending of your parameters, 50% of the trees will choose feature <code>A</code> and the other 50% will choose feature <code>B</code>. So the <em>importance</em> of the information contained in <code>A</code> and <code>B</code> (which is the same, because they are perfectly correlated) is diluted in <code>A</code> and <code>B</code>. So you won’t easily know this information is important to predict what you want to predict! It is even worse when you have 10 correlated features…</p>
-<p>In boosting, when a specific link between feature and outcome have been learned by the algorithm, it will try to not refocus on it (in theory it is what happens, reality is not always that simple). Therefore, all the importance will be on feature <code>A</code> or on feature <code>B</code> (but not both). You will know that one feature have an important role in the link between the observations and the label. It is still up to you to search for the correlated features to the one detected as important if you need to know all of them.</p>
-<p>If you want to try Random Forests algorithm, you can tweak XGBoost parameters!</p>
-<p>For instance, to compute a model with 1000 trees, with a 0.5 factor on sampling rows and columns:</p>
-<div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb32-1" data-line-number="1"><span class="kw">data</span>(agaricus.train, <span class="dt">package=</span><span class="st">'xgboost'</span>)</a>
-<a class="sourceLine" id="cb32-2" data-line-number="2"><span class="kw">data</span>(agaricus.test, <span class="dt">package=</span><span class="st">'xgboost'</span>)</a>
-<a class="sourceLine" id="cb32-3" data-line-number="3">train &lt;-<span class="st"> </span>agaricus.train</a>
-<a class="sourceLine" id="cb32-4" data-line-number="4">test &lt;-<span class="st"> </span>agaricus.test</a>
-<a class="sourceLine" id="cb32-5" data-line-number="5"></a>
-<a class="sourceLine" id="cb32-6" data-line-number="6"><span class="co">#Random Forest - 1000 trees</span></a>
-<a class="sourceLine" id="cb32-7" data-line-number="7">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train<span class="op">$</span>data, <span class="dt">label =</span> train<span class="op">$</span>label, <span class="dt">max_depth =</span> <span class="dv">4</span>, <span class="dt">num_parallel_tree =</span> <span class="dv">1000</span>, <span class="dt">subsample =</span> <span class="fl">0.5</span>, <span class="dt">colsample_bytree =</span><span class="fl">0.5</span>, <span class="dt">nrounds =</span> <span class="dv">1</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [02:03:23] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
-## [1]  train-logloss:0.456530</code></pre>
-<div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb34-1" data-line-number="1"><span class="co">#Boosting - 3 rounds</span></a>
-<a class="sourceLine" id="cb34-2" data-line-number="2">bst &lt;-<span class="st"> </span><span class="kw">xgboost</span>(<span class="dt">data =</span> train<span class="op">$</span>data, <span class="dt">label =</span> train<span class="op">$</span>label, <span class="dt">max_depth =</span> <span class="dv">4</span>, <span class="dt">nrounds =</span> <span class="dv">3</span>, <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</a></code></pre></div>
-<pre><code>## [02:03:23] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+<div id="special-note-what-about-random-forests" class="section level2" number="1.7">
+<h2><span class="header-section-number">1.7</span> Special Note: What
+about Random Forests™?</h2>
+<p>As you may know, <a href="https://en.wikipedia.org/wiki/Random_forest">Random Forests</a>
+algorithm is cousin with boosting and both are part of the <a href="https://en.wikipedia.org/wiki/Ensemble_learning">ensemble
+learning</a> family.</p>
+<p>Both trains several decision trees for one dataset. The <em>main</em>
+difference is that in Random Forests, trees are independent and in
+boosting, the tree <code>N+1</code> focus its learning on the loss
+(&lt;=&gt; what has not been well modeled by the tree
+<code>N</code>).</p>
+<p>This difference have an impact on a corner case in feature importance
+analysis: the <em>correlated features</em>.</p>
+<p>Imagine two features perfectly correlated, feature <code>A</code> and
+feature <code>B</code>. For one specific tree, if the algorithm needs
+one of them, it will choose randomly (true in both boosting and Random
+Forests).</p>
+<p>However, in Random Forests this random choice will be done for each
+tree, because each tree is independent from the others. Therefore,
+approximatively, depending of your parameters, 50% of the trees will
+choose feature <code>A</code> and the other 50% will choose feature
+<code>B</code>. So the <em>importance</em> of the information contained
+in <code>A</code> and <code>B</code> (which is the same, because they
+are perfectly correlated) is diluted in <code>A</code> and
+<code>B</code>. So you won’t easily know this information is important
+to predict what you want to predict! It is even worse when you have 10
+correlated features…</p>
+<p>In boosting, when a specific link between feature and outcome have
+been learned by the algorithm, it will try to not refocus on it (in
+theory it is what happens, reality is not always that simple).
+Therefore, all the importance will be on feature <code>A</code> or on
+feature <code>B</code> (but not both). You will know that one feature
+have an important role in the link between the observations and the
+label. It is still up to you to search for the correlated features to
+the one detected as important if you need to know all of them.</p>
+<p>If you want to try Random Forests algorithm, you can tweak XGBoost
+parameters!</p>
+<p>For instance, to compute a model with 1000 trees, with a 0.5 factor
+on sampling rows and columns:</p>
+<div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="fu">data</span>(agaricus.train, <span class="at">package=</span><span class="st">&#39;xgboost&#39;</span>)</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="fu">data</span>(agaricus.test, <span class="at">package=</span><span class="st">&#39;xgboost&#39;</span>)</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>train <span class="ot">&lt;-</span> agaricus.train</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>test <span class="ot">&lt;-</span> agaricus.test</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a><span class="co">#Random Forest - 1000 trees</span></span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgboost</span>(<span class="at">data =</span> train<span class="sc">$</span>data, <span class="at">label =</span> train<span class="sc">$</span>label, <span class="at">max_depth =</span> <span class="dv">4</span>, <span class="at">num_parallel_tree =</span> <span class="dv">1000</span>, <span class="at">subsample =</span> <span class="fl">0.5</span>, <span class="at">colsample_bytree =</span><span class="fl">0.5</span>, <span class="at">nrounds =</span> <span class="dv">1</span>, <span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</span></code></pre></div>
+<pre><code>## [08:44:31] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective &#39;binary:logistic&#39; was changed from &#39;error&#39; to &#39;logloss&#39;. Explicitly set eval_metric if you&#39;d like to restore the old behavior.
+## [1]  train-logloss:0.456259</code></pre>
+<div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="co">#Boosting - 3 rounds</span></span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgboost</span>(<span class="at">data =</span> train<span class="sc">$</span>data, <span class="at">label =</span> train<span class="sc">$</span>label, <span class="at">max_depth =</span> <span class="dv">4</span>, <span class="at">nrounds =</span> <span class="dv">3</span>, <span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</span></code></pre></div>
+<pre><code>## [08:44:31] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective &#39;binary:logistic&#39; was changed from &#39;error&#39; to &#39;logloss&#39;. Explicitly set eval_metric if you&#39;d like to restore the old behavior.
 ## [1]  train-logloss:0.444883 
 ## [2]  train-logloss:0.302428 
-## [3]  train-logloss:0.212847</code></pre>
+## [3]  train-logloss:0.212846</code></pre>
 <blockquote>
-<p>Note that the parameter <code>round</code> is set to <code>1</code>.</p>
+<p>Note that the parameter <code>round</code> is set to
+<code>1</code>.</p>
 </blockquote>
 <blockquote>
-<p><a href="https://www.stat.berkeley.edu/~breiman/RandomForests/cc_papers.htm"><strong>Random Forests</strong></a> is a trademark of Leo Breiman and Adele Cutler and is licensed exclusively to Salford Systems for the commercial release of the software.</p>
+<p><a href="https://www.stat.berkeley.edu/~breiman/RandomForests/cc_papers.htm"><strong>Random
+Forests</strong></a> is a trademark of Leo Breiman and Adele Cutler and
+is licensed exclusively to Salford Systems for the commercial release of
+the software.</p>
 </blockquote>
 </div>
 </div>
