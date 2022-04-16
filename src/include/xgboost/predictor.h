@@ -105,11 +105,11 @@ class Predictor {
   /*
    * \brief Runtime parameters.
    */
-  GenericParameter const* generic_param_;
+  GenericParameter const* ctx_;
 
  public:
-  explicit Predictor(GenericParameter const* generic_param) :
-      generic_param_{generic_param} {}
+  explicit Predictor(GenericParameter const* ctx) : ctx_{ctx} {}
+
   virtual ~Predictor() = default;
 
   /**
@@ -126,9 +126,8 @@ class Predictor {
    * \param out_predt Prediction vector to be initialized.
    * \param model Tree model used for prediction.
    */
-  virtual void InitOutPredictions(const MetaInfo &info,
-                                  HostDeviceVector<bst_float> *out_predt,
-                                  const gbm::GBTreeModel &model) const = 0;
+  void InitOutPredictions(const MetaInfo& info, HostDeviceVector<bst_float>* out_predt,
+                          const gbm::GBTreeModel& model) const;
 
   /**
    * \brief Generate batch predictions for a given feature matrix. May use

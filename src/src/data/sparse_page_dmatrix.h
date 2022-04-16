@@ -69,7 +69,7 @@ class SparsePageDMatrix : public DMatrix {
   XGDMatrixCallbackNext *next_;
 
   float missing_;
-  GenericParameter ctx_;
+  Context ctx_;
   std::string cache_prefix_;
   uint32_t n_batches_ {0};
   // sparse page is the source to other page types, we make a special member function.
@@ -99,8 +99,8 @@ class SparsePageDMatrix : public DMatrix {
   }
 
   MetaInfo& Info() override;
-
   const MetaInfo& Info() const override;
+  Context const* Ctx() const override { return &ctx_; }
 
   bool SingleColBlock() const override { return false; }
   DMatrix *Slice(common::Span<int32_t const>) override {
@@ -146,7 +146,7 @@ MakeCache(SparsePageDMatrix *ptr, std::string format, std::string prefix,
   auto it = cache_info.find(id);
   if (it == cache_info.cend()) {
     cache_info[id].reset(new Cache{false, name, format});
-    LOG(INFO) << "Make cache:" << name << std::endl;
+    LOG(INFO) << "Make cache:" << cache_info[id]->ShardName() << std::endl;
   }
   return id;
 }

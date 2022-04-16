@@ -7,6 +7,8 @@
 #include <dmlc/omp.h>
 #include <xgboost/logging.h>
 #include <algorithm>
+
+#include "xgboost/task.h"
 #include "../common/math.h"
 
 namespace xgboost {
@@ -36,6 +38,7 @@ struct LinearSquareLoss {
   static const char* DefaultEvalMetric() { return "rmse"; }
 
   static const char* Name() { return "reg:squarederror"; }
+  static ObjInfo Info() { return {ObjInfo::kRegression, true}; }
 };
 
 struct SquaredLogError {
@@ -61,6 +64,8 @@ struct SquaredLogError {
   static const char* DefaultEvalMetric() { return "rmsle"; }
 
   static const char* Name() { return "reg:squaredlogerror"; }
+
+  static ObjInfo Info() { return {ObjInfo::kRegression, false}; }
 };
 
 // logistic loss for probability regression task
@@ -96,43 +101,15 @@ struct LogisticRegression {
   static const char* DefaultEvalMetric() { return "rmse"; }
 
   static const char* Name() { return "reg:logistic"; }
-};
 
-struct PseudoHuberError {
-  XGBOOST_DEVICE static bst_float PredTransform(bst_float x) {
-    return x;
-  }
-  XGBOOST_DEVICE static bool CheckLabel(bst_float) {
-    return true;
-  }
-  XGBOOST_DEVICE static bst_float FirstOrderGradient(bst_float predt, bst_float label) {
-    const float z = predt - label;
-    const float scale_sqrt = std::sqrt(1 + std::pow(z, 2));
-    return z/scale_sqrt;
-  }
-  XGBOOST_DEVICE static bst_float SecondOrderGradient(bst_float predt, bst_float label) {
-    const float scale = 1 + std::pow(predt - label, 2);
-    const float scale_sqrt = std::sqrt(scale);
-    return 1/(scale*scale_sqrt);
-  }
-  static bst_float ProbToMargin(bst_float base_score) {
-    return base_score;
-  }
-  static const char* LabelErrorMsg() {
-    return "";
-  }
-  static const char* DefaultEvalMetric() {
-    return "mphe";
-  }
-  static const char* Name() {
-    return "reg:pseudohubererror";
-  }
+  static ObjInfo Info() { return {ObjInfo::kRegression, false}; }
 };
 
 // logistic loss for binary classification task
 struct LogisticClassification : public LogisticRegression {
   static const char* DefaultEvalMetric() { return "logloss"; }
   static const char* Name() { return "binary:logistic"; }
+  static ObjInfo Info() { return {ObjInfo::kBinary, false}; }
 };
 
 // logistic loss, but predict un-transformed margin
@@ -168,6 +145,8 @@ struct LogisticRaw : public LogisticRegression {
   static const char* DefaultEvalMetric() { return "logloss"; }
 
   static const char* Name() { return "binary:logitraw"; }
+
+  static ObjInfo Info() { return {ObjInfo::kRegression, false}; }
 };
 
 }  // namespace obj

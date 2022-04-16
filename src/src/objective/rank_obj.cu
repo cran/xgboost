@@ -754,24 +754,26 @@ class LambdaRankObj : public ObjFunction {
     param_.UpdateAllowUnknown(args);
   }
 
+  ObjInfo Task() const override { return {ObjInfo::kRanking, false}; }
+
   void GetGradient(const HostDeviceVector<bst_float>& preds,
                    const MetaInfo& info,
                    int iter,
                    HostDeviceVector<GradientPair>* out_gpair) override {
-    CHECK_EQ(preds.Size(), info.labels_.Size()) << "label size predict size not match";
+    CHECK_EQ(preds.Size(), info.labels.Size()) << "label size predict size not match";
 
     // quick consistency when group is not available
-    std::vector<unsigned> tgptr(2, 0); tgptr[1] = static_cast<unsigned>(info.labels_.Size());
+    std::vector<unsigned> tgptr(2, 0); tgptr[1] = static_cast<unsigned>(info.labels.Size());
     const std::vector<unsigned> &gptr = info.group_ptr_.size() == 0 ? tgptr : info.group_ptr_;
-    CHECK(gptr.size() != 0 && gptr.back() == info.labels_.Size())
+    CHECK(gptr.size() != 0 && gptr.back() == info.labels.Size())
           << "group structure not consistent with #rows" << ", "
           << "group ponter size: " << gptr.size() << ", "
-          << "labels size: " << info.labels_.Size() << ", "
+          << "labels size: " << info.labels.Size() << ", "
           << "group pointer back: " << (gptr.size() == 0 ? 0 : gptr.back());
 
 #if defined(__CUDACC__)
     // Check if we have a GPU assignment; else, revert back to CPU
-    auto device = tparam_->gpu_id;
+    auto device = ctx_->gpu_id;
     if (device >= 0) {
       ComputeGradientsOnGPU(preds, info, iter, out_gpair, gptr);
     } else {
@@ -818,13 +820,13 @@ class LambdaRankObj : public ObjFunction {
     bst_float weight_normalization_factor = ComputeWeightNormalizationFactor(info, gptr);
 
     const auto& preds_h = preds.HostVector();
-    const auto& labels = info.labels_.HostVector();
+    const auto& labels = info.labels.HostView();
     std::vector<GradientPair>& gpair = out_gpair->HostVector();
     const auto ngroup = static_cast<bst_omp_uint>(gptr.size() - 1);
     out_gpair->Resize(preds.Size());
 
     dmlc::OMPException exc;
-    #pragma omp parallel
+#pragma omp parallel num_threads(ctx_->Threads())
     {
       exc.Run([&]() {
         // parallel construct, declare random number generator here, so that each
@@ -839,7 +841,7 @@ class LambdaRankObj : public ObjFunction {
           exc.Run([&]() {
             lst.clear(); pairs.clear();
             for (unsigned j = gptr[k]; j < gptr[k+1]; ++j) {
-              lst.emplace_back(preds_h[j], labels[j], j);
+              lst.emplace_back(preds_h[j], labels(j), j);
               gpair[j] = GradientPair(0.0f, 0.0f);
             }
             std::stable_sort(lst.begin(), lst.end(), ListEntry::CmpPred);
@@ -907,14 +909,14 @@ class LambdaRankObj : public ObjFunction {
                              const std::vector<unsigned> &gptr) {
     LOG(DEBUG) << "Computing " << LambdaWeightComputerT::Name() << " gradients on GPU.";
 
-    auto device = tparam_->gpu_id;
+    auto device = ctx_->gpu_id;
     dh::safe_cuda(cudaSetDevice(device));
 
     bst_float weight_normalization_factor = ComputeWeightNormalizationFactor(info, gptr);
 
     // Set the device ID and copy them to the device
     out_gpair->SetDevice(device);
-    info.labels_.SetDevice(device);
+    info.labels.SetDevice(device);
     preds.SetDevice(device);
     info.weights_.SetDevice(device);
 
@@ -922,19 +924,19 @@ class LambdaRankObj : public ObjFunction {
 
     auto d_preds = preds.ConstDevicePointer();
     auto d_gpair = out_gpair->DevicePointer();
-    auto d_labels = info.labels_.ConstDevicePointer();
+    auto d_labels = info.labels.View(device);
 
     SortedLabelList slist(param_);
 
     // Sort the labels within the groups on the device
-    slist.Sort(info.labels_, gptr);
+    slist.Sort(*info.labels.Data(), gptr);
 
     // Initialize the gradients next
     out_gpair->Fill(GradientPair(0.0f, 0.0f));
 
     // Finally, compute the gradients
-    slist.ComputeGradients<LambdaWeightComputerT>
-      (d_preds, d_labels, info.weights_, iter, d_gpair, weight_normalization_factor);
+    slist.ComputeGradients<LambdaWeightComputerT>(d_preds, d_labels.Values().data(), info.weights_,
+                                                  iter, d_gpair, weight_normalization_factor);
   }
 #endif
 

@@ -43,6 +43,15 @@ typedef void *BoosterHandle;  // NOLINT(*)
 XGB_DLL void XGBoostVersion(int* major, int* minor, int* patch);
 
 /*!
+ * \brief Get compile information of shared library.
+ *
+ * \param out string encoded JSON object containing build flags and dependency version.
+ *
+ * \return 0 for success, -1 for failure
+ */
+XGB_DLL int XGBuildInfo(char const **out);
+
+/*!
  * \brief get string message of the last error
  *
  *  all function in this file will return 0 when success
@@ -240,7 +249,7 @@ XGB_DLL int XGDMatrixCreateFromCudaArrayInterface(char const *data,
                                                   char const* json_config,
                                                   DMatrixHandle *out);
 
-/*
+/**
  * ========================== Begin data callback APIs =========================
  *
  * Short notes for data callback
@@ -249,9 +258,9 @@ XGB_DLL int XGDMatrixCreateFromCudaArrayInterface(char const *data,
  * used by JVM packages.  It uses `XGBoostBatchCSR` to accept batches for CSR formated
  * input, and concatenate them into 1 final big CSR.  The related functions are:
  *
- * - XGBCallbackSetData
- * - XGBCallbackDataIterNext
- * - XGDMatrixCreateFromDataIter
+ * - \ref XGBCallbackSetData
+ * - \ref XGBCallbackDataIterNext
+ * - \ref XGDMatrixCreateFromDataIter
  *
  * Another set is used by external data iterator. It accept foreign data iterators as
  * callbacks.  There are 2 different senarios where users might want to pass in callbacks
@@ -267,17 +276,17 @@ XGB_DLL int XGDMatrixCreateFromCudaArrayInterface(char const *data,
  * Related functions are:
  *
  * # Factory functions
- * - `XGDMatrixCreateFromCallback` for external memory
- * - `XGDeviceQuantileDMatrixCreateFromCallback` for quantile DMatrix
+ * - \ref XGDMatrixCreateFromCallback for external memory
+ * - \ref XGDeviceQuantileDMatrixCreateFromCallback for quantile DMatrix
  *
  * # Proxy that callers can use to pass data to XGBoost
- * - XGProxyDMatrixCreate
- * - XGDMatrixCallbackNext
- * - DataIterResetCallback
- * - XGProxyDMatrixSetDataCudaArrayInterface
- * - XGProxyDMatrixSetDataCudaColumnar
- * - XGProxyDMatrixSetDataDense
- * - XGProxyDMatrixSetDataCSR
+ * - \ref XGProxyDMatrixCreate
+ * - \ref XGDMatrixCallbackNext
+ * - \ref DataIterResetCallback
+ * - \ref XGProxyDMatrixSetDataCudaArrayInterface
+ * - \ref XGProxyDMatrixSetDataCudaColumnar
+ * - \ref XGProxyDMatrixSetDataDense
+ * - \ref XGProxyDMatrixSetDataCSR
  * - ... (data setters)
  */
 
@@ -402,7 +411,7 @@ XGB_EXTERN_C typedef void DataIterResetCallback(DataIterHandle handle); // NOLIN
  *   - cache_prefix: The path of cache file, caller must initialize all the directories in this path.
  *   - nthread (optional): Number of threads used for initializing DMatrix.
  *
- * \param out      The created external memory DMatrix
+ * \param[out] out      The created external memory DMatrix
  *
  * \return 0 when success, -1 when failure happens
  */
@@ -493,12 +502,29 @@ XGB_DLL int XGProxyDMatrixSetDataCSR(DMatrixHandle handle, char const *indptr,
                                      char const *indices, char const *data,
                                      bst_ulong ncol);
 
-
 /*
  * ==========================- End data callback APIs ==========================
  */
 
 
+XGB_DLL int XGImportArrowRecordBatch(DataIterHandle data_handle, void *ptr_array, void *ptr_schema);
+
+/*!
+ * \brief Construct DMatrix from arrow using callbacks.  Arrow related C API is not stable
+ *        and subject to change in the future.
+ *
+ * \param next Callback function for fetching arrow records.
+ * \param json_config JSON encoded configuration.  Required values are:
+ *
+ *          - missing
+ *          - nthread
+ *
+ * \param out      The created DMatrix.
+ *
+ * \return 0 when success, -1 when failure happens
+ */
+XGB_DLL int XGDMatrixCreateFromArrowCallback(XGDMatrixCallbackNext *next, char const *json_config,
+                                             DMatrixHandle *out);
 
 /*!
  * \brief create a new dmatrix from sliced content of existing matrix
@@ -596,7 +622,8 @@ XGB_DLL int XGDMatrixSetUIntInfo(DMatrixHandle handle,
  *   char const* feat_names [] {"feat_0", "feat_1"};
  *   XGDMatrixSetStrFeatureInfo(handle, "feature_name", feat_names, 2);
  *
- *   // i for integer, q for quantitive.  Similarly "int" and "float" are also recognized.
+ *   // i for integer, q for quantitive, c for categorical.  Similarly "int" and "float"
+ *   // are also recognized.
  *   char const* feat_types [] {"i", "q"};
  *   XGDMatrixSetStrFeatureInfo(handle, "feature_type", feat_types, 2);
  *
@@ -1071,13 +1098,31 @@ XGB_DLL int XGBoosterSaveModel(BoosterHandle handle,
 XGB_DLL int XGBoosterLoadModelFromBuffer(BoosterHandle handle,
                                          const void *buf,
                                          bst_ulong len);
+
 /*!
- * \brief save model into binary raw bytes, return header of the array
- * user must copy the result out, before next xgboost call
+ * \brief Save model into raw bytes, return header of the array.  User must copy the
+ *        result out, before next xgboost call
+ *
  * \param handle handle
- * \param out_len the argument to hold the output length
- * \param out_dptr the argument to hold the output data pointer
+ * \param json_config JSON encoded string storing parameters for the function.  Following
+ *                    keys are expected in the JSON document:
+ *
+ *     "format": str
+ *       - json: Output booster will be encoded as JSON.
+ *       - ubj:  Output booster will be encoded as Univeral binary JSON.
+ *       - deprecated: Output booster will be encoded as old custom binary format.  Do not use
+ *         this format except for compatibility reasons.
+ *
+ * \param out_len  The argument to hold the output length
+ * \param out_dptr The argument to hold the output data pointer
+ *
  * \return 0 when success, -1 when failure happens
+ */
+XGB_DLL int XGBoosterSaveModelToBuffer(BoosterHandle handle, char const *json_config,
+                                       bst_ulong *out_len, char const **out_dptr);
+
+/*!
+ * \brief Deprecated, use `XGBoosterSaveModelToBuffer` instead.
  */
 XGB_DLL int XGBoosterGetModelRaw(BoosterHandle handle, bst_ulong *out_len,
                                  const char **out_dptr);

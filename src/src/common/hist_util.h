@@ -1,5 +1,5 @@
 /*!
- * Copyright 2017-2021 by Contributors
+ * Copyright 2017-2022 by XGBoost Contributors
  * \file hist_util.h
  * \brief Utility for fast histogram aggregation
  * \author Philip Cho, Tianqi Chen
@@ -16,13 +16,12 @@
 #include <utility>
 #include <map>
 
-#include "row_set.h"
+#include "categorical.h"
 #include "common.h"
+#include "quantile.h"
+#include "row_set.h"
 #include "threading_utils.h"
-#include "../tree/param.h"
-#include "./quantile.h"
-#include "./timer.h"
-#include "../include/rabit/rabit.h"
+#include "timer.h"
 
 namespace xgboost {
 class GHistIndexMatrix;
@@ -34,106 +33,161 @@ namespace common {
  */
 using GHistIndexRow = Span<uint32_t const>;
 
-// A CSC matrix representing histogram cuts, used in CPU quantile hist.
+// A CSC matrix representing histogram cuts.
 // The cut values represent upper bounds of bins containing approximately equal numbers of elements
 class HistogramCuts {
+  bool has_categorical_{false};
+  float max_cat_{-1.0f};
+
  protected:
   using BinIdx = uint32_t;
 
+  void Swap(HistogramCuts&& that) noexcept(true) {
+    std::swap(cut_values_, that.cut_values_);
+    std::swap(cut_ptrs_, that.cut_ptrs_);
+    std::swap(min_vals_, that.min_vals_);
+
+    std::swap(has_categorical_, that.has_categorical_);
+    std::swap(max_cat_, that.max_cat_);
+  }
+
+  void Copy(HistogramCuts const& that) {
+    cut_values_.Resize(that.cut_values_.Size());
+    cut_ptrs_.Resize(that.cut_ptrs_.Size());
+    min_vals_.Resize(that.min_vals_.Size());
+    cut_values_.Copy(that.cut_values_);
+    cut_ptrs_.Copy(that.cut_ptrs_);
+    min_vals_.Copy(that.min_vals_);
+    has_categorical_ = that.has_categorical_;
+    max_cat_ = that.max_cat_;
+  }
+
  public:
-  HostDeviceVector<bst_float> cut_values_;  // NOLINT
-  HostDeviceVector<uint32_t> cut_ptrs_;     // NOLINT
+  HostDeviceVector<float> cut_values_;   // NOLINT
+  HostDeviceVector<uint32_t> cut_ptrs_;  // NOLINT
   // storing minimum value in a sketch set.
   HostDeviceVector<float> min_vals_;  // NOLINT
 
   HistogramCuts();
-  HistogramCuts(HistogramCuts const& that) {
-    cut_values_.Resize(that.cut_values_.Size());
-    cut_ptrs_.Resize(that.cut_ptrs_.Size());
-    min_vals_.Resize(that.min_vals_.Size());
-    cut_values_.Copy(that.cut_values_);
-    cut_ptrs_.Copy(that.cut_ptrs_);
-    min_vals_.Copy(that.min_vals_);
-  }
+  HistogramCuts(HistogramCuts const& that) { this->Copy(that); }
 
   HistogramCuts(HistogramCuts&& that) noexcept(true) {
-    *this = std::forward<HistogramCuts&&>(that);
+    this->Swap(std::forward<HistogramCuts>(that));
   }
 
   HistogramCuts& operator=(HistogramCuts const& that) {
-    cut_values_.Resize(that.cut_values_.Size());
-    cut_ptrs_.Resize(that.cut_ptrs_.Size());
-    min_vals_.Resize(that.min_vals_.Size());
-    cut_values_.Copy(that.cut_values_);
-    cut_ptrs_.Copy(that.cut_ptrs_);
-    min_vals_.Copy(that.min_vals_);
+    this->Copy(that);
     return *this;
   }
 
   HistogramCuts& operator=(HistogramCuts&& that) noexcept(true) {
-    cut_ptrs_ = std::move(that.cut_ptrs_);
-    cut_values_ = std::move(that.cut_values_);
-    min_vals_ = std::move(that.min_vals_);
+    this->Swap(std::forward<HistogramCuts>(that));
     return *this;
   }
 
-  uint32_t FeatureBins(uint32_t feature) const {
-    return cut_ptrs_.ConstHostVector().at(feature + 1) -
-           cut_ptrs_.ConstHostVector()[feature];
+  uint32_t FeatureBins(bst_feature_t feature) const {
+    return cut_ptrs_.ConstHostVector().at(feature + 1) - cut_ptrs_.ConstHostVector()[feature];
   }
 
-  // Getters.  Cuts should be of no use after building histogram indices, but currently
-  // they are deeply linked with quantile_hist, gpu sketcher and gpu_hist, so we preserve
-  // these for now.
   std::vector<uint32_t> const& Ptrs()      const { return cut_ptrs_.ConstHostVector();   }
   std::vector<float>    const& Values()    const { return cut_values_.ConstHostVector(); }
   std::vector<float>    const& MinValues() const { return min_vals_.ConstHostVector();   }
+
+  bool HasCategorical() const { return has_categorical_; }
+  float MaxCategory() const { return max_cat_; }
+  /**
+   * \brief Set meta info about categorical features.
+   *
+   * \param has_cat Do we have categorical feature in the data?
+   * \param max_cat The maximum categorical value in all features.
+   */
+  void SetCategorical(bool has_cat, float max_cat) {
+    has_categorical_ = has_cat;
+    max_cat_ = max_cat;
+  }
 
   size_t TotalBins() const { return cut_ptrs_.ConstHostVector().back(); }
 
   // Return the index of a cut point that is strictly greater than the input
   // value, or the last available index if none exists
-  BinIdx SearchBin(float value, uint32_t column_id) const {
-    auto beg = cut_ptrs_.ConstHostVector().at(column_id);
-    auto end = cut_ptrs_.ConstHostVector().at(column_id + 1);
-    const auto &values = cut_values_.ConstHostVector();
+  BinIdx SearchBin(float value, bst_feature_t column_id, std::vector<uint32_t> const& ptrs,
+                   std::vector<float> const& values) const {
+    auto end = ptrs[column_id + 1];
+    auto beg = ptrs[column_id];
     auto it = std::upper_bound(values.cbegin() + beg, values.cbegin() + end, value);
     BinIdx idx = it - values.cbegin();
-    if (idx == end) {
-      idx -= 1;
-    }
+    idx -= !!(idx == end);
     return idx;
   }
 
+  BinIdx SearchBin(float value, bst_feature_t column_id) const {
+    return this->SearchBin(value, column_id, Ptrs(), Values());
+  }
+
+  /**
+   * \brief Search the bin index for numerical feature.
+   */
   BinIdx SearchBin(Entry const& e) const {
     return SearchBin(e.fvalue, e.index);
   }
+
+  /**
+   * \brief Search the bin index for categorical feature.
+   */
+  BinIdx SearchCatBin(Entry const &e) const {
+    auto const &ptrs = this->Ptrs();
+    auto const &vals = this->Values();
+    auto end = ptrs.at(e.index + 1) + vals.cbegin();
+    auto beg = ptrs[e.index] + vals.cbegin();
+    // Truncates the value in case it's not perfectly rounded.
+    auto v  = static_cast<float>(common::AsCat(e.fvalue));
+    auto bin_idx = std::lower_bound(beg, end, v) - vals.cbegin();
+    if (bin_idx == ptrs.at(e.index + 1)) {
+      bin_idx -= 1;
+    }
+    return bin_idx;
+  }
 };
 
-inline HistogramCuts SketchOnDMatrix(DMatrix *m, int32_t max_bins,
-                                     Span<float> const hessian = {}) {
+/**
+ * \brief Run CPU sketching on DMatrix.
+ *
+ * \param use_sorted Whether should we use SortedCSC for sketching, it's more efficient
+ *                   but consumes more memory.
+ */
+inline HistogramCuts SketchOnDMatrix(DMatrix* m, int32_t max_bins, int32_t n_threads,
+                                     bool use_sorted = false, Span<float> const hessian = {}) {
   HistogramCuts out;
   auto const& info = m->Info();
-  const auto threads = omp_get_max_threads();
-  std::vector<std::vector<bst_row_t>> column_sizes(threads);
+  std::vector<std::vector<bst_row_t>> column_sizes(n_threads);
   for (auto& column : column_sizes) {
     column.resize(info.num_col_, 0);
   }
   std::vector<bst_row_t> reduced(info.num_col_, 0);
   for (auto const& page : m->GetBatches<SparsePage>()) {
-    auto const &entries_per_column =
-        HostSketchContainer::CalcColumnSize(page, info.num_col_, threads);
+    auto const& entries_per_column =
+        HostSketchContainer::CalcColumnSize(page, info.num_col_, n_threads);
     for (size_t i = 0; i < entries_per_column.size(); ++i) {
       reduced[i] += entries_per_column[i];
     }
   }
-  HostSketchContainer container(reduced, max_bins,
-                                m->Info().feature_types.ConstHostSpan(),
-                                HostSketchContainer::UseGroup(info), threads);
-  for (auto const &page : m->GetBatches<SparsePage>()) {
-    container.PushRowPage(page, info, hessian);
+
+  if (!use_sorted) {
+    HostSketchContainer container(max_bins, m->Info(), reduced, HostSketchContainer::UseGroup(info),
+                                  hessian, n_threads);
+    for (auto const& page : m->GetBatches<SparsePage>()) {
+      container.PushRowPage(page, info, hessian);
+    }
+    container.MakeCuts(&out);
+  } else {
+    SortedSketchContainer container{
+        max_bins, m->Info(), reduced, HostSketchContainer::UseGroup(info), hessian, n_threads};
+    for (auto const& page : m->GetBatches<SortedCSCPage>()) {
+      container.PushColPage(page, info, hessian);
+    }
+    container.MakeCuts(&out);
   }
-  container.MakeCuts(&out);
+
   return out;
 }
 
@@ -143,19 +197,27 @@ enum BinTypeSize : uint32_t {
   kUint32BinsTypeSize = 4
 };
 
+/**
+ * \brief Optionally compressed gradient index. The compression works only with dense
+ *        data.
+ *
+ *   The main body of construction code is in gradient_index.cc, this struct is only a
+ *   storage class.
+ */
 struct Index {
-  Index() {
-    SetBinTypeSize(binTypeSize_);
-  }
+  Index() { SetBinTypeSize(binTypeSize_); }
   Index(const Index& i) = delete;
   Index& operator=(Index i) = delete;
   Index(Index&& i) = delete;
   Index& operator=(Index&& i) = delete;
   uint32_t operator[](size_t i) const {
-    if (offset_ptr_ != nullptr) {
-      return func_(data_ptr_, i) + offset_ptr_[i%p_];
+    if (!bin_offset_.empty()) {
+      // dense, compressed
+      auto fidx = i % bin_offset_.size();
+      // restore the index by adding back its feature offset.
+      return func_(data_.data(), i) + bin_offset_[fidx];
     } else {
-      return func_(data_ptr_, i);
+      return func_(data_.data(), i);
     }
   }
   void SetBinTypeSize(BinTypeSize binTypeSize) {
@@ -171,35 +233,32 @@ struct Index {
         func_ = &GetValueFromUint32;
         break;
       default:
-        CHECK(binTypeSize == kUint8BinsTypeSize  ||
-              binTypeSize == kUint16BinsTypeSize ||
+        CHECK(binTypeSize == kUint8BinsTypeSize || binTypeSize == kUint16BinsTypeSize ||
               binTypeSize == kUint32BinsTypeSize);
     }
   }
   BinTypeSize GetBinTypeSize() const {
     return binTypeSize_;
   }
-  template<typename T>
-  T* data() const {  // NOLINT
-    return static_cast<T*>(data_ptr_);
+  template <typename T>
+  T const* data() const {  // NOLINT
+    return reinterpret_cast<T const*>(data_.data());
   }
-  uint32_t* Offset() const {
-    return offset_ptr_;
+  template <typename T>
+  T* data() {  // NOLINT
+    return reinterpret_cast<T*>(data_.data());
   }
-  size_t OffsetSize() const {
-    return offset_.size();
+  uint32_t const* Offset() const { return bin_offset_.data(); }
+  size_t OffsetSize() const { return bin_offset_.size(); }
+  size_t Size() const { return data_.size() / (binTypeSize_); }
+
+  void Resize(const size_t n_bytes) {
+    data_.resize(n_bytes);
   }
-  size_t Size() const {
-    return data_.size() / (binTypeSize_);
-  }
-  void Resize(const size_t nBytesData) {
-    data_.resize(nBytesData);
-    data_ptr_ = reinterpret_cast<void*>(data_.data());
-  }
-  void ResizeOffset(const size_t nDisps) {
-    offset_.resize(nDisps);
-    offset_ptr_ = offset_.data();
-    p_ = nDisps;
+  // set the offset used in compression, cut_ptrs is the CSC indptr in HistogramCuts
+  void SetBinOffset(std::vector<uint32_t> const& cut_ptrs) {
+    bin_offset_.resize(cut_ptrs.size() - 1);  // resize to number of features.
+    std::copy_n(cut_ptrs.begin(), bin_offset_.size(), bin_offset_.begin());
   }
   std::vector<uint8_t>::const_iterator begin() const {  // NOLINT
     return data_.begin();
@@ -216,24 +275,23 @@ struct Index {
   }
 
  private:
-  static uint32_t GetValueFromUint8(void *t, size_t i) {
-    return reinterpret_cast<uint8_t*>(t)[i];
+  // Functions to decompress the index.
+  static uint32_t GetValueFromUint8(uint8_t const* t, size_t i) { return t[i]; }
+  static uint32_t GetValueFromUint16(uint8_t const* t, size_t i) {
+    return reinterpret_cast<uint16_t const*>(t)[i];
   }
-  static uint32_t GetValueFromUint16(void* t, size_t i) {
-    return reinterpret_cast<uint16_t*>(t)[i];
-  }
-  static uint32_t GetValueFromUint32(void* t, size_t i) {
-    return reinterpret_cast<uint32_t*>(t)[i];
+  static uint32_t GetValueFromUint32(uint8_t const* t, size_t i) {
+    return reinterpret_cast<uint32_t const*>(t)[i];
   }
 
-  using Func = uint32_t (*)(void*, size_t);
+  using Func = uint32_t (*)(uint8_t const*, size_t);
 
   std::vector<uint8_t> data_;
-  std::vector<uint32_t> offset_;  // size of this field is equal to number of features
-  void* data_ptr_;
+  // starting position of each feature inside the cut values (the indptr of the CSC cut matrix
+  // HistogramCuts without the last entry.) Used for bin compression.
+  std::vector<uint32_t> bin_offset_;
+
   BinTypeSize binTypeSize_ {kUint8BinsTypeSize};
-  size_t p_ {1};
-  uint32_t* offset_ptr_ {nullptr};
   Func func_;
 };
 
@@ -250,9 +308,11 @@ int32_t XGBOOST_HOST_DEV_INLINE BinarySearchBin(size_t begin, size_t end,
     }
     previous_middle = middle;
 
+    // index into all the bins
     auto gidx = data[middle];
 
     if (gidx >= fidx_begin && gidx < fidx_end) {
+      // Found the intersection.
       return static_cast<int32_t>(gidx);
     } else if (gidx < fidx_begin) {
       begin = middle;
@@ -441,7 +501,7 @@ class ParallelGHistBuilder {
   }
 
   // Reduce following bins (begin, end] for nid-node in dst across threads
-  void ReduceHist(size_t nid, size_t begin, size_t end) {
+  void ReduceHist(size_t nid, size_t begin, size_t end) const {
     CHECK_GT(end, begin);
     CHECK_LT(nid, nodes_);
 
@@ -467,7 +527,6 @@ class ParallelGHistBuilder {
     }
   }
 
- protected:
   void MatchThreadsToNodes(const BlockedSpace2d& space) {
     const size_t space_size = space.Size();
     const size_t chunck_size = space_size / nthreads_ + !!(space_size % nthreads_);
@@ -514,6 +573,7 @@ class ParallelGHistBuilder {
     }
   }
 
+ private:
   void MatchNodeNidPairToHist() {
     size_t hist_allocated_additionally = 0;
 
@@ -567,64 +627,20 @@ class GHistBuilder {
   using GHistRowT = GHistRow<GradientSumT>;
 
   GHistBuilder() = default;
-  GHistBuilder(size_t nthread, uint32_t nbins) : nthread_{nthread}, nbins_{nbins} {}
+  explicit GHistBuilder(uint32_t nbins): nbins_{nbins} {}
 
   // construct a histogram via histogram aggregation
   template <bool any_missing>
-  void BuildHist(const std::vector<GradientPair>& gpair,
+  void BuildHist(const std::vector<GradientPair> &gpair,
                  const RowSetCollection::Elem row_indices,
-                 const GHistIndexMatrix& gmat,
-                 GHistRowT hist);
-  // construct a histogram via subtraction trick
-  void SubtractionTrick(GHistRowT self,
-                        GHistRowT sibling,
-                        GHistRowT parent);
-
+                 const GHistIndexMatrix &gmat, GHistRowT hist) const;
   uint32_t GetNumBins() const {
       return nbins_;
   }
 
  private:
-  /*! \brief number of threads for parallel computation */
-  size_t nthread_ { 0 };
   /*! \brief number of all bins over all features */
   uint32_t nbins_ { 0 };
-};
-
-/*!
- * \brief A C-style array with in-stack allocation. As long as the array is smaller than
- * MaxStackSize, it will be allocated inside the stack. Otherwise, it will be
- * heap-allocated.
- */
-template<typename T, size_t MaxStackSize>
-class MemStackAllocator {
- public:
-  explicit MemStackAllocator(size_t required_size): required_size_(required_size) {
-  }
-
-  T* Get() {
-    if (!ptr_) {
-      if (MaxStackSize >= required_size_) {
-        ptr_ = stack_mem_;
-      } else {
-        ptr_ =  reinterpret_cast<T*>(malloc(required_size_ * sizeof(T)));
-        do_free_ = true;
-      }
-    }
-
-    return ptr_;
-  }
-
-  ~MemStackAllocator() {
-    if (do_free_) free(ptr_);
-  }
-
-
- private:
-  T* ptr_ = nullptr;
-  bool do_free_ = false;
-  size_t required_size_;
-  T stack_mem_[MaxStackSize];
 };
 }  // namespace common
 }  // namespace xgboost

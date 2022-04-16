@@ -1,5 +1,5 @@
 /*!
- * Copyright 2014-2019 by Contributors
+ * Copyright 2014-2022 by Contributors
  * \file tree_model.h
  * \brief model structure for tree
  * \author Tianqi Chen
@@ -42,7 +42,7 @@ struct TreeParam : public dmlc::Parameter<TreeParam> {
   /*! \brief maximum depth, this is a statistics of the tree */
   int deprecated_max_depth;
   /*! \brief number of features used for tree construction */
-  int num_feature;
+  bst_feature_t num_feature;
   /*!
    * \brief leaf vector size, used for vector tree
    * used to store more than one dimensional information in tree
@@ -604,6 +604,16 @@ class RegTree : public Model {
    */
   std::vector<FeatureType> const &GetSplitTypes() const { return split_types_; }
   common::Span<uint32_t const> GetSplitCategories() const { return split_categories_; }
+  /*!
+   * \brief Get the bit storage for categories
+   */
+  common::Span<uint32_t const> NodeCats(bst_node_t nidx) const {
+    auto node_ptr = GetCategoriesMatrix().node_ptr;
+    auto categories = GetCategoriesMatrix().categories;
+    auto segment = node_ptr[nidx];
+    auto node_cats = categories.subspan(segment.beg, segment.size);
+    return node_cats;
+  }
   auto const& GetSplitCategoriesPtr() const { return split_categories_segments_; }
 
   // The fields of split_categories_segments_[i] are set such that
@@ -629,6 +639,7 @@ class RegTree : public Model {
   }
 
  private:
+  template <bool typed>
   void LoadCategoricalSplit(Json const& in);
   void SaveCategoricalSplit(Json* p_out) const;
   // vector of nodes

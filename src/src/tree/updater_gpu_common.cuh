@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include "../common/categorical.h"
 #include "../common/device_helpers.cuh"
 #include "../common/random.h"
 #include "param.h"
@@ -27,6 +28,7 @@ struct GPUTrainingParam {
   // default=0 means no constraint on weight delta
   float max_delta_step;
   float learning_rate;
+  uint32_t max_cat_to_onehot;
 
   GPUTrainingParam() = default;
 
@@ -35,13 +37,9 @@ struct GPUTrainingParam {
         reg_lambda(param.reg_lambda),
         reg_alpha(param.reg_alpha),
         max_delta_step(param.max_delta_step),
-        learning_rate{param.learning_rate} {}
+        learning_rate{param.learning_rate},
+        max_cat_to_onehot{param.max_cat_to_onehot} {}
 };
-
-using NodeIdT = int32_t;
-
-/** used to assign default id to a Node */
-static const bst_node_t kUnusedNode = -1;
 
 /**
  * @enum DefaultDirection node.cuh
@@ -59,10 +57,12 @@ struct DeviceSplitCandidate {
   DefaultDirection dir {kLeftDir};
   int findex {-1};
   float fvalue {0};
+
+  common::CatBitField split_cats;
   bool is_cat { false };
 
-  GradientPair left_sum;
-  GradientPair right_sum;
+  GradientPairPrecise left_sum;
+  GradientPairPrecise right_sum;
 
   XGBOOST_DEVICE DeviceSplitCandidate() {}  // NOLINT
 
@@ -75,11 +75,33 @@ struct DeviceSplitCandidate {
       *this = other;
     }
   }
+  /**
+   * \brief The largest encoded category in the split bitset
+   */
+  bst_cat_t MaxCat() const {
+    // Reuse the fvalue for categorical values.
+    return static_cast<bst_cat_t>(fvalue);
+  }
+  /**
+   * \brief Return the best threshold for cat split, reset the value after return.
+   */
+  XGBOOST_DEVICE size_t PopBestThresh() {
+    // fvalue is also being used for storing the threshold for categorical split
+    auto best_thresh = static_cast<size_t>(this->fvalue);
+    this->fvalue = 0;
+    return best_thresh;
+  }
+
+  template <typename T>
+  XGBOOST_DEVICE void SetCat(T c) {
+    this->split_cats.Set(common::AsCat(c));
+    fvalue = std::max(this->fvalue, static_cast<float>(c));
+  }
 
   XGBOOST_DEVICE void Update(float loss_chg_in, DefaultDirection dir_in,
                              float fvalue_in, int findex_in,
-                             GradientPair left_sum_in,
-                             GradientPair right_sum_in,
+                             GradientPairPrecise left_sum_in,
+                             GradientPairPrecise right_sum_in,
                              bool cat,
                              const GPUTrainingParam& param) {
     if (loss_chg_in > loss_chg &&
@@ -105,18 +127,6 @@ struct DeviceSplitCandidate {
        << "left sum: " << c.left_sum << ", "
        << "right sum: " << c.right_sum << std::endl;
     return os;
-  }
-};
-
-struct DeviceSplitCandidateReduceOp {
-  GPUTrainingParam param;
-  explicit DeviceSplitCandidateReduceOp(GPUTrainingParam param) : param(std::move(param)) {}
-  XGBOOST_DEVICE DeviceSplitCandidate operator()(
-      const DeviceSplitCandidate& a, const DeviceSplitCandidate& b) const {
-    DeviceSplitCandidate best;
-    best.Update(a, param);
-    best.Update(b, param);
-    return best;
   }
 };
 

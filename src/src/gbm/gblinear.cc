@@ -1,5 +1,5 @@
 /*!
- * Copyright 2014-2021 by Contributors
+ * Copyright 2014-2022 by XGBoost Contributors
  * \file gblinear.cc
  * \brief Implementation of Linear booster, with L1/L2 regularization: Elastic Net
  *        the update rule is parallel coordinate descent (shotgun)
@@ -71,8 +71,9 @@ void LinearCheckLayer(unsigned layer_begin) {
  */
 class GBLinear : public GradientBooster {
  public:
-  explicit GBLinear(LearnerModelParam const* learner_model_param)
-      : learner_model_param_{learner_model_param},
+  explicit GBLinear(LearnerModelParam const* learner_model_param, GenericParameter const* ctx)
+      : GradientBooster{ctx},
+        learner_model_param_{learner_model_param},
         model_{learner_model_param},
         previous_model_{learner_model_param},
         sum_instance_weight_(0),
@@ -85,7 +86,7 @@ class GBLinear : public GradientBooster {
     }
     param_.UpdateAllowUnknown(cfg);
     param_.CheckGPUSupport();
-    updater_.reset(LinearUpdater::Create(param_.updater, generic_param_));
+    updater_.reset(LinearUpdater::Create(param_.updater, ctx_));
     updater_->Configure(cfg);
     monitor_.Init("GBLinear");
   }
@@ -119,7 +120,7 @@ class GBLinear : public GradientBooster {
     CHECK_EQ(get<String>(in["name"]), "gblinear");
     FromJson(in["gblinear_train_param"], &param_);
     param_.CheckGPUSupport();
-    updater_.reset(LinearUpdater::Create(param_.updater, generic_param_));
+    updater_.reset(LinearUpdater::Create(param_.updater, ctx_));
     this->updater_->LoadConfig(in["updater"]);
   }
   void SaveConfig(Json* p_out) const override {
@@ -177,7 +178,7 @@ class GBLinear : public GradientBooster {
                            unsigned layer_begin, unsigned layer_end, bool, int, unsigned) override {
     model_.LazyInitModel();
     LinearCheckLayer(layer_begin);
-    const auto &base_margin = p_fmat->Info().base_margin_.ConstHostVector();
+    auto base_margin = p_fmat->Info().base_margin_.View(GenericParameter::kCpuId);
     const int ngroup = model_.learner_model_param->num_output_group;
     const size_t ncolumns = model_.learner_model_param->num_feature + 1;
     // allocate space for (#features + bias) times #groups times #rows
@@ -190,7 +191,7 @@ class GBLinear : public GradientBooster {
       // parallel over local batch
       const auto nsize = static_cast<bst_omp_uint>(batch.Size());
       auto page = batch.GetView();
-      common::ParallelFor(nsize, [&](bst_omp_uint i) {
+      common::ParallelFor(nsize, ctx_->Threads(), [&](bst_omp_uint i) {
         auto inst = page[i];
         auto row_idx = static_cast<size_t>(batch.base_rowid + i);
         // loop over output groups
@@ -202,9 +203,9 @@ class GBLinear : public GradientBooster {
             p_contribs[ins.index] = ins.fvalue * model_[ins.index][gid];
           }
           // add base margin to BIAS
-          p_contribs[ncolumns - 1] = model_.Bias()[gid] +
-            ((base_margin.size() != 0) ? base_margin[row_idx * ngroup + gid] :
-                                         learner_model_param_->base_score);
+          p_contribs[ncolumns - 1] =
+              model_.Bias()[gid] + ((base_margin.Size() != 0) ? base_margin(row_idx, gid)
+                                                              : learner_model_param_->base_score);
         }
       });
     }
@@ -244,7 +245,10 @@ class GBLinear : public GradientBooster {
     // The bias is the last weight
     out_scores->resize(model_.weight.size() - learner_model_param_->num_output_group, 0);
     auto n_groups = learner_model_param_->num_output_group;
-    MatrixView<float> scores{out_scores, {learner_model_param_->num_feature, n_groups}};
+    linalg::TensorView<float, 2> scores{
+        *out_scores,
+        {learner_model_param_->num_feature, n_groups},
+        GenericParameter::kCpuId};
     for (size_t i = 0; i < learner_model_param_->num_feature; ++i) {
       for (bst_group_t g = 0; g < n_groups; ++g) {
         scores(i, g) = model_[i][g];
@@ -266,7 +270,7 @@ class GBLinear : public GradientBooster {
     monitor_.Start("PredictBatchInternal");
     model_.LazyInitModel();
     std::vector<bst_float> &preds = *out_preds;
-    const auto& base_margin = p_fmat->Info().base_margin_.ConstHostVector();
+    auto base_margin = p_fmat->Info().base_margin_.View(GenericParameter::kCpuId);
     // start collecting the prediction
     const int ngroup = model_.learner_model_param->num_output_group;
     preds.resize(p_fmat->Info().num_row_ * ngroup);
@@ -276,16 +280,15 @@ class GBLinear : public GradientBooster {
       // k is number of group
       // parallel over local batch
       const auto nsize = static_cast<omp_ulong>(batch.Size());
-      if (base_margin.size() != 0) {
-        CHECK_EQ(base_margin.size(), nsize * ngroup);
+      if (base_margin.Size() != 0) {
+        CHECK_EQ(base_margin.Size(), nsize * ngroup);
       }
-      common::ParallelFor(nsize, [&](omp_ulong i) {
+      common::ParallelFor(nsize, ctx_->Threads(), [&](omp_ulong i) {
         const size_t ridx = page.base_rowid + i;
         // loop over output groups
         for (int gid = 0; gid < ngroup; ++gid) {
-          bst_float margin =
-              (base_margin.size() != 0) ?
-              base_margin[ridx * ngroup + gid] : learner_model_param_->base_score;
+          float margin =
+              (base_margin.Size() != 0) ? base_margin(ridx, gid) : learner_model_param_->base_score;
           this->Pred(batch[i], &preds[ridx * ngroup], gid, margin);
         }
       });
@@ -349,8 +352,8 @@ DMLC_REGISTER_PARAMETER(GBLinearTrainParam);
 
 XGBOOST_REGISTER_GBM(GBLinear, "gblinear")
     .describe("Linear booster, implement generalized linear model.")
-    .set_body([](LearnerModelParam const* booster_config) {
-      return new GBLinear(booster_config);
+    .set_body([](LearnerModelParam const* booster_config, GenericParameter const* ctx) {
+      return new GBLinear(booster_config, ctx);
     });
 }  // namespace gbm
 }  // namespace xgboost

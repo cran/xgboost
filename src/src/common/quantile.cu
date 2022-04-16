@@ -1,22 +1,23 @@
 /*!
  * Copyright 2020 by XGBoost Contributors
  */
-#include <thrust/unique.h>
-#include <thrust/iterator/discard_iterator.h>
 #include <thrust/binary_search.h>
-#include <thrust/transform_scan.h>
 #include <thrust/execution_policy.h>
+#include <thrust/iterator/discard_iterator.h>
+#include <thrust/transform_scan.h>
+#include <thrust/unique.h>
 
+#include <limits>  // std::numeric_limits
 #include <memory>
 #include <utility>
 
-#include "xgboost/span.h"
-#include "quantile.h"
-#include "quantile.cuh"
-#include "hist_util.h"
-#include "device_helpers.cuh"
 #include "categorical.h"
 #include "common.h"
+#include "device_helpers.cuh"
+#include "hist_util.h"
+#include "quantile.cuh"
+#include "quantile.h"
+#include "xgboost/span.h"
 
 namespace xgboost {
 namespace common {
@@ -580,6 +581,19 @@ void SketchContainer::AllReduce() {
   timer_.Stop(__func__);
 }
 
+namespace {
+struct InvalidCatOp {
+  Span<float const> values;
+  Span<uint32_t const> ptrs;
+  Span<FeatureType const> ft;
+
+  XGBOOST_DEVICE bool operator()(size_t i) const {
+    auto fidx = dh::SegmentId(ptrs, i);
+    return IsCat(ft, fidx) && InvalidCat(values[i]);
+  }
+};
+}  // anonymous namespace
+
 void SketchContainer::MakeCuts(HistogramCuts* p_cuts) {
   timer_.Start(__func__);
   dh::safe_cuda(cudaSetDevice(device_));
@@ -669,6 +683,37 @@ void SketchContainer::MakeCuts(HistogramCuts* p_cuts) {
     assert(idx+1 < in_column.size());
     out_column[idx] = in_column[idx+1].value;
   });
+
+  float max_cat{-1.0f};
+  if (has_categorical_) {
+    auto invalid_op = InvalidCatOp{out_cut_values, d_out_columns_ptr, d_ft};
+    auto it = dh::MakeTransformIterator<thrust::pair<bool, float>>(
+        thrust::make_counting_iterator(0ul), [=] XGBOOST_DEVICE(size_t i) {
+          auto fidx = dh::SegmentId(d_out_columns_ptr, i);
+          if (IsCat(d_ft, fidx)) {
+            auto invalid = invalid_op(i);
+            auto v = out_cut_values[i];
+            return thrust::make_pair(invalid, v);
+          }
+          return thrust::make_pair(false, std::numeric_limits<float>::min());
+        });
+
+    bool invalid{false};
+    dh::XGBCachingDeviceAllocator<char> alloc;
+    thrust::tie(invalid, max_cat) =
+        thrust::reduce(thrust::cuda::par(alloc), it, it + out_cut_values.size(),
+                       thrust::make_pair(false, std::numeric_limits<float>::min()),
+                       [=] XGBOOST_DEVICE(thrust::pair<bool, bst_cat_t> const &l,
+                                          thrust::pair<bool, bst_cat_t> const &r) {
+                         return thrust::make_pair(l.first || r.first, std::max(l.second, r.second));
+                       });
+    if (invalid) {
+      InvalidCategory();
+    }
+  }
+
+  p_cuts->SetCategorical(this->has_categorical_, max_cat);
+
   timer_.Stop(__func__);
 }
 }  // namespace common

@@ -1,5 +1,5 @@
 /*!
- * Copyright 2015-2021 by Contributors
+ * Copyright 2015-2022 by XGBoost Contributors
  * \file simple_dmatrix.h
  * \brief In-memory version of DMatrix.
  * \author Tianqi Chen
@@ -30,8 +30,8 @@ class SimpleDMatrix : public DMatrix {
   void SaveToLocalFile(const std::string& fname);
 
   MetaInfo& Info() override;
-
   const MetaInfo& Info() const override;
+  Context const* Ctx() const override { return &ctx_; }
 
   bool SingleColBlock() const override { return true; }
   DMatrix* Slice(common::Span<int32_t const> ridxs) override;
@@ -39,7 +39,7 @@ class SimpleDMatrix : public DMatrix {
   /*! \brief magic number used to identify SimpleDMatrix binary files */
   static const int kMagic = 0xffffab01;
 
- private:
+ protected:
   BatchSet<SparsePage> GetRowBatches() override;
   BatchSet<CSCPage> GetColumnBatches() override;
   BatchSet<SortedCSCPage> GetSortedColumnBatches() override;
@@ -61,6 +61,9 @@ class SimpleDMatrix : public DMatrix {
   bool SparsePageExists() const override {
     return true;
   }
+
+ private:
+  Context ctx_;
 };
 }  // namespace data
 }  // namespace xgboost

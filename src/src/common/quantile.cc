@@ -1,49 +1,47 @@
 /*!
- * Copyright 2020-2021 by XGBoost Contributors
+ * Copyright 2020-2022 by XGBoost Contributors
  */
+#include "quantile.h"
+
 #include <limits>
 #include <utility>
-#include "quantile.h"
-#include "hist_util.h"
+
 #include "categorical.h"
+#include "hist_util.h"
+#include "rabit/rabit.h"
 
 namespace xgboost {
 namespace common {
 
-HostSketchContainer::HostSketchContainer(
-    std::vector<bst_row_t> columns_size, int32_t max_bins,
-    common::Span<FeatureType const> feature_types, bool use_group,
-    int32_t n_threads)
+template <typename WQSketch>
+SketchContainerImpl<WQSketch>::SketchContainerImpl(std::vector<bst_row_t> columns_size,
+                                                   int32_t max_bins,
+                                                   Span<FeatureType const> feature_types,
+                                                   bool use_group, int32_t n_threads)
     : feature_types_(feature_types.cbegin(), feature_types.cend()),
-      columns_size_{std::move(columns_size)}, max_bins_{max_bins},
-      use_group_ind_{use_group}, n_threads_{n_threads} {
+      columns_size_{std::move(columns_size)},
+      max_bins_{max_bins},
+      use_group_ind_{use_group},
+      n_threads_{n_threads} {
   monitor_.Init(__func__);
   CHECK_NE(columns_size_.size(), 0);
   sketches_.resize(columns_size_.size());
   CHECK_GE(n_threads_, 1);
   categories_.resize(columns_size_.size());
-  ParallelFor(sketches_.size(), n_threads_, Sched::Auto(), [&](auto i) {
-    auto n_bins = std::min(static_cast<size_t>(max_bins_), columns_size_[i]);
-    n_bins = std::max(n_bins, static_cast<decltype(n_bins)>(1));
-    auto eps = 1.0 / (static_cast<float>(n_bins) * WQSketch::kFactor);
-    if (!IsCat(this->feature_types_, i)) {
-      sketches_[i].Init(columns_size_[i], eps);
-      sketches_[i].inqueue.queue.resize(sketches_[i].limit_size * 2);
-    }
-  });
+  has_categorical_ = std::any_of(feature_types_.cbegin(), feature_types_.cend(), IsCatOp{});
 }
 
-std::vector<bst_row_t>
-HostSketchContainer::CalcColumnSize(SparsePage const &batch,
-                                    bst_feature_t const n_columns,
-                                    size_t const nthreads) {
+template <typename WQSketch>
+std::vector<bst_row_t> SketchContainerImpl<WQSketch>::CalcColumnSize(SparsePage const &batch,
+                                                                     bst_feature_t const n_columns,
+                                                                     size_t const nthreads) {
   auto page = batch.GetView();
   std::vector<std::vector<bst_row_t>> column_sizes(nthreads);
   for (auto &column : column_sizes) {
     column.resize(n_columns, 0);
   }
 
-  ParallelFor(omp_ulong(page.Size()), nthreads, [&](omp_ulong i) {
+  ParallelFor(page.Size(), nthreads, [&](omp_ulong i) {
     auto &local_column_sizes = column_sizes.at(omp_get_thread_num());
     auto row = page[i];
     auto const *p_row = row.data();
@@ -52,7 +50,7 @@ HostSketchContainer::CalcColumnSize(SparsePage const &batch,
     }
   });
   std::vector<bst_row_t> entries_per_columns(n_columns, 0);
-  ParallelFor(bst_omp_uint(n_columns), nthreads, [&](bst_omp_uint i) {
+  ParallelFor(n_columns, nthreads, [&](bst_omp_uint i) {
     for (auto const &thread : column_sizes) {
       entries_per_columns[i] += thread[i];
     }
@@ -60,15 +58,17 @@ HostSketchContainer::CalcColumnSize(SparsePage const &batch,
   return entries_per_columns;
 }
 
-std::vector<bst_feature_t> HostSketchContainer::LoadBalance(
-    SparsePage const &batch, bst_feature_t n_columns, size_t const nthreads) {
+template <typename WQSketch>
+std::vector<bst_feature_t> SketchContainerImpl<WQSketch>::LoadBalance(SparsePage const &batch,
+                                                                      bst_feature_t n_columns,
+                                                                      size_t const nthreads) {
   /* Some sparse datasets have their mass concentrating on small number of features.  To
    * avoid waiting for a few threads running forever, we here distribute different number
    * of columns to different threads according to number of entries.
    */
   auto page = batch.GetView();
   size_t const total_entries = page.data.size();
-  size_t const entries_per_thread = common::DivRoundUp(total_entries, nthreads);
+  size_t const entries_per_thread = DivRoundUp(total_entries, nthreads);
 
   std::vector<std::vector<bst_row_t>> column_sizes(nthreads);
   for (auto& column : column_sizes) {
@@ -99,9 +99,8 @@ std::vector<bst_feature_t> HostSketchContainer::LoadBalance(
 
 namespace {
 // Function to merge hessian and sample weights
-std::vector<float> MergeWeights(MetaInfo const &info,
-                                Span<float> const hessian,
-                                bool use_group, int32_t n_threads) {
+std::vector<float> MergeWeights(MetaInfo const &info, Span<float const> hessian, bool use_group,
+                                int32_t n_threads) {
   CHECK_EQ(hessian.size(), info.num_row_);
   std::vector<float> results(hessian.size());
   auto const &group_ptr = info.group_ptr_;
@@ -146,8 +145,9 @@ std::vector<float> UnrollGroupWeights(MetaInfo const &info) {
 }
 }  // anonymous namespace
 
-void HostSketchContainer::PushRowPage(
-    SparsePage const &page, MetaInfo const &info, Span<float> hessian) {
+template <typename WQSketch>
+void SketchContainerImpl<WQSketch>::PushRowPage(SparsePage const &page, MetaInfo const &info,
+                                                Span<float const> hessian) {
   monitor_.Start(__func__);
   bst_feature_t n_columns = info.num_col_;
   auto is_dense = info.num_nonzero_ == info.num_col_ * info.num_row_;
@@ -214,61 +214,179 @@ void HostSketchContainer::PushRowPage(
   monitor_.Stop(__func__);
 }
 
-void HostSketchContainer::GatherSketchInfo(
-    std::vector<WQSketch::SummaryContainer> const &reduced,
-    std::vector<size_t> *p_worker_segments,
-    std::vector<bst_row_t> *p_sketches_scan,
-    std::vector<WQSketch::Entry> *p_global_sketches) {
-  auto& worker_segments = *p_worker_segments;
+namespace {
+/**
+ * \brief A view over gathered sketch values.
+ */
+template <typename T>
+struct QuantileAllreduce {
+  common::Span<T> global_values;
+  common::Span<size_t> worker_indptr;
+  common::Span<size_t> feature_indptr;
+  size_t n_features{0};
+  /**
+   * \brief Get sketch values of the a feature from a worker.
+   *
+   * \param rank rank of target worker
+   * \param fidx feature idx
+   */
+  auto Values(int32_t rank, bst_feature_t fidx) const {
+    // get span for worker
+    auto wsize = worker_indptr[rank + 1] - worker_indptr[rank];
+    auto worker_values = global_values.subspan(worker_indptr[rank], wsize);
+    auto psize = n_features + 1;
+    auto worker_feat_indptr = feature_indptr.subspan(psize * rank, psize);
+    // get span for feature
+    auto feat_beg = worker_feat_indptr[fidx];
+    auto feat_size = worker_feat_indptr[fidx + 1] - feat_beg;
+    return worker_values.subspan(feat_beg, feat_size);
+  }
+};
+
+/**
+ * \brief Merge all categories from other workers.
+ */
+void AllreduceCategories(Span<FeatureType const> feature_types, int32_t n_threads,
+                         std::vector<std::set<float>> *p_categories) {
+  auto &categories = *p_categories;
+  auto world_size = rabit::GetWorldSize();
+  auto rank = rabit::GetRank();
+  if (world_size == 1) {
+    return;
+  }
+
+  // CSC indptr to each feature
+  std::vector<size_t> feature_ptr(categories.size() + 1, 0);
+  for (size_t i = 0; i < categories.size(); ++i) {
+    auto const &feat = categories[i];
+    feature_ptr[i + 1] = feat.size();
+  }
+  std::partial_sum(feature_ptr.begin(), feature_ptr.end(), feature_ptr.begin());
+  CHECK_EQ(feature_ptr.front(), 0);
+
+  // gather all feature ptrs from workers
+  std::vector<size_t> global_feat_ptrs(feature_ptr.size() * world_size, 0);
+  size_t feat_begin = rank * feature_ptr.size();  // pointer to current worker
+  std::copy(feature_ptr.begin(), feature_ptr.end(), global_feat_ptrs.begin() + feat_begin);
+  rabit::Allreduce<rabit::op::Sum>(global_feat_ptrs.data(), global_feat_ptrs.size());
+
+  // move all categories into a flatten vector to prepare for allreduce
+  size_t total = feature_ptr.back();
+  std::vector<float> flatten(total, 0);
+  auto cursor{flatten.begin()};
+  for (auto const &feat : categories) {
+    cursor = std::copy(feat.cbegin(), feat.cend(), cursor);
+  }
+
+  // indptr for indexing workers
+  std::vector<size_t> global_worker_ptr(world_size + 1, 0);
+  global_worker_ptr[rank + 1] = total;  // shift 1 to right for constructing the indptr
+  rabit::Allreduce<rabit::op::Sum>(global_worker_ptr.data(), global_worker_ptr.size());
+  std::partial_sum(global_worker_ptr.cbegin(), global_worker_ptr.cend(), global_worker_ptr.begin());
+  // total number of categories in all workers with all features
+  auto gtotal = global_worker_ptr.back();
+
+  // categories in all workers with all features.
+  std::vector<float> global_categories(gtotal, 0);
+  auto rank_begin = global_worker_ptr[rank];
+  auto rank_size = global_worker_ptr[rank + 1] - rank_begin;
+  CHECK_EQ(rank_size, total);
+  std::copy(flatten.cbegin(), flatten.cend(), global_categories.begin() + rank_begin);
+  // gather values from all workers.
+  rabit::Allreduce<rabit::op::Sum>(global_categories.data(), global_categories.size());
+  QuantileAllreduce<float> allreduce_result{global_categories, global_worker_ptr, global_feat_ptrs,
+                                            categories.size()};
+  ParallelFor(categories.size(), n_threads, [&](auto fidx) {
+    if (!IsCat(feature_types, fidx)) {
+      return;
+    }
+    for (int32_t r = 0; r < world_size; ++r) {
+      if (r == rank) {
+        // continue if it's current worker.
+        continue;
+      }
+      // 1 feature of 1 worker
+      auto worker_feature = allreduce_result.Values(r, fidx);
+      for (auto c : worker_feature) {
+        categories[fidx].emplace(c);
+      }
+    }
+  });
+}
+}  // anonymous namespace
+
+template <typename WQSketch>
+void SketchContainerImpl<WQSketch>::GatherSketchInfo(
+    std::vector<typename WQSketch::SummaryContainer> const &reduced,
+    std::vector<size_t> *p_worker_segments, std::vector<bst_row_t> *p_sketches_scan,
+    std::vector<typename WQSketch::Entry> *p_global_sketches) {
+  auto &worker_segments = *p_worker_segments;
   worker_segments.resize(1, 0);
   auto world = rabit::GetWorldSize();
   auto rank = rabit::GetRank();
   auto n_columns = sketches_.size();
 
+  // get the size of each feature.
   std::vector<bst_row_t> sketch_size;
-  for (auto const& sketch : reduced) {
-    sketch_size.push_back(sketch.size);
+  for (size_t i = 0; i < reduced.size(); ++i) {
+    if (IsCat(feature_types_, i)) {
+      sketch_size.push_back(0);
+    } else {
+      sketch_size.push_back(reduced[i].size);
+    }
   }
-  std::vector<bst_row_t>& sketches_scan = *p_sketches_scan;
+  // turn the size into CSC indptr
+  std::vector<bst_row_t> &sketches_scan = *p_sketches_scan;
   sketches_scan.resize((n_columns + 1) * world, 0);
-  size_t beg_scan = rank * (n_columns + 1);
-  std::partial_sum(sketch_size.cbegin(), sketch_size.cend(),
-                   sketches_scan.begin() + beg_scan + 1);
+  size_t beg_scan = rank * (n_columns + 1);  // starting storage for current worker.
+  std::partial_sum(sketch_size.cbegin(), sketch_size.cend(), sketches_scan.begin() + beg_scan + 1);
+
   // Gather all column pointers
   rabit::Allreduce<rabit::op::Sum>(sketches_scan.data(), sketches_scan.size());
-
   for (int32_t i = 0; i < world; ++i) {
     size_t back = (i + 1) * (n_columns + 1) - 1;
     auto n_entries = sketches_scan.at(back);
     worker_segments.push_back(n_entries);
   }
   // Offset of sketch from each worker.
-  std::partial_sum(worker_segments.begin(), worker_segments.end(),
-                   worker_segments.begin());
+  std::partial_sum(worker_segments.begin(), worker_segments.end(), worker_segments.begin());
   CHECK_GE(worker_segments.size(), 1);
   auto total = worker_segments.back();
 
-  auto& global_sketches = *p_global_sketches;
-  global_sketches.resize(total, WQSketch::Entry{0, 0, 0, 0});
-  auto worker_sketch = Span<WQSketch::Entry>{global_sketches}.subspan(
+  auto &global_sketches = *p_global_sketches;
+  global_sketches.resize(total, typename WQSketch::Entry{0, 0, 0, 0});
+  auto worker_sketch = Span<typename WQSketch::Entry>{global_sketches}.subspan(
       worker_segments[rank], worker_segments[rank + 1] - worker_segments[rank]);
-  size_t cursor = 0;
-  for (auto const &sketch : reduced) {
-    std::copy(sketch.data, sketch.data + sketch.size,
-              worker_sketch.begin() + cursor);
-    cursor += sketch.size;
+  auto cursor{worker_sketch.begin()};
+  for (size_t fidx = 0; fidx < reduced.size(); ++fidx) {
+    auto const &sketch = reduced[fidx];
+    if (IsCat(feature_types_, fidx)) {
+      // nothing to do if it's categorical feature, size is 0 so no need to change cursor
+      continue;
+    } else {
+      cursor = std::copy(sketch.data, sketch.data + sketch.size, cursor);
+    }
   }
 
-  static_assert(sizeof(WQSketch::Entry) / 4 == sizeof(float), "");
+  static_assert(sizeof(typename WQSketch::Entry) / 4 == sizeof(float),
+                "Unexpected size of sketch entry.");
   rabit::Allreduce<rabit::op::Sum>(
       reinterpret_cast<float *>(global_sketches.data()),
-      global_sketches.size() * sizeof(WQSketch::Entry) / sizeof(float));
+      global_sketches.size() * sizeof(typename WQSketch::Entry) / sizeof(float));
 }
 
-void HostSketchContainer::AllReduce(
-    std::vector<WQSketch::SummaryContainer> *p_reduced,
+template <typename WQSketch>
+void SketchContainerImpl<WQSketch>::AllReduce(
+    std::vector<typename WQSketch::SummaryContainer> *p_reduced,
     std::vector<int32_t>* p_num_cuts) {
   monitor_.Start(__func__);
+
+  size_t n_columns = sketches_.size();
+  rabit::Allreduce<rabit::op::Max>(&n_columns, 1);
+  CHECK_EQ(n_columns, sketches_.size()) << "Number of columns differs across workers";
+
+  AllreduceCategories(feature_types_, n_threads_, &categories_);
+
   auto& num_cuts = *p_num_cuts;
   CHECK_EQ(num_cuts.size(), 0);
   num_cuts.resize(sketches_.size());
@@ -276,20 +394,20 @@ void HostSketchContainer::AllReduce(
   auto &reduced = *p_reduced;
   reduced.resize(sketches_.size());
 
-  size_t n_columns = sketches_.size();
-  rabit::Allreduce<rabit::op::Max>(&n_columns, 1);
-  CHECK_EQ(n_columns, sketches_.size()) << "Number of columns differs across workers";
-
   // Prune the intermediate num cuts for synchronization.
   std::vector<bst_row_t> global_column_size(columns_size_);
   rabit::Allreduce<rabit::op::Sum>(global_column_size.data(), global_column_size.size());
 
   ParallelFor(sketches_.size(), n_threads_, [&](size_t i) {
     int32_t intermediate_num_cuts = static_cast<int32_t>(
-        std::min(global_column_size[i],
-                 static_cast<size_t>(max_bins_ * WQSketch::kFactor)));
-    if (global_column_size[i] != 0) {
-      WQSketch::SummaryContainer out;
+        std::min(global_column_size[i], static_cast<size_t>(max_bins_ * WQSketch::kFactor)));
+    if (global_column_size[i] == 0) {
+      return;
+    }
+    if (IsCat(feature_types_, i)) {
+      intermediate_num_cuts = categories_[i].size();
+    } else {
+      typename WQSketch::SummaryContainer out;
       sketches_[i].GetSummary(&out);
       reduced[i].Reserve(intermediate_num_cuts);
       CHECK(reduced[i].data);
@@ -307,29 +425,26 @@ void HostSketchContainer::AllReduce(
   std::vector<size_t> worker_segments(1, 0);  // CSC pointer to sketches.
   std::vector<bst_row_t> sketches_scan((n_columns + 1) * world, 0);
 
-  std::vector<WQSketch::Entry> global_sketches;
-  this->GatherSketchInfo(reduced, &worker_segments, &sketches_scan,
-                         &global_sketches);
+  std::vector<typename WQSketch::Entry> global_sketches;
+  this->GatherSketchInfo(reduced, &worker_segments, &sketches_scan, &global_sketches);
 
-  std::vector<WQSketch::SummaryContainer> final_sketches(n_columns);
+  std::vector<typename WQSketch::SummaryContainer> final_sketches(n_columns);
+
   ParallelFor(n_columns, n_threads_, [&](auto fidx) {
+    // gcc raises subobject-linkage warning if we put allreduce_result as lambda capture
+    QuantileAllreduce<typename WQSketch::Entry> allreduce_result{global_sketches, worker_segments,
+                                                                 sketches_scan, n_columns};
     int32_t intermediate_num_cuts = num_cuts[fidx];
-    auto nbytes =
-        WQSketch::SummaryContainer::CalcMemCost(intermediate_num_cuts);
+    auto nbytes = WQSketch::SummaryContainer::CalcMemCost(intermediate_num_cuts);
+    if (IsCat(feature_types_, fidx)) {
+      return;
+    }
 
-    for (int32_t i = 1; i < world + 1; ++i) {
-      auto size = worker_segments.at(i) - worker_segments[i - 1];
-      auto worker_sketches = Span<WQSketch::Entry>{global_sketches}.subspan(
-          worker_segments[i - 1], size);
-      auto worker_scan =
-          Span<bst_row_t>(sketches_scan)
-              .subspan((i - 1) * (n_columns + 1), (n_columns + 1));
-
-      auto worker_feature = worker_sketches.subspan(
-          worker_scan[fidx], worker_scan[fidx + 1] - worker_scan[fidx]);
+    for (int32_t r = 0; r < world; ++r) {
+      // 1 feature of 1 worker
+      auto worker_feature = allreduce_result.Values(r, fidx);
       CHECK(worker_feature.data());
-      WQSummary<float, float> summary(worker_feature.data(),
-                                      worker_feature.size());
+      typename WQSketch::Summary summary(worker_feature.data(), worker_feature.size());
       auto &out = final_sketches.at(fidx);
       out.Reduce(summary, nbytes);
     }
@@ -340,10 +455,11 @@ void HostSketchContainer::AllReduce(
   monitor_.Stop(__func__);
 }
 
-void AddCutPoint(WQuantileSketch<float, float>::SummaryContainer const &summary,
-                 int max_bin, HistogramCuts *cuts) {
+template <typename SketchType>
+void AddCutPoint(typename SketchType::SummaryContainer const &summary, int max_bin,
+                 HistogramCuts *cuts) {
   size_t required_cuts = std::min(summary.size, static_cast<size_t>(max_bin));
-  auto& cut_values = cuts->cut_values_.HostVector();
+  auto &cut_values = cuts->cut_values_.HostVector();
   for (size_t i = 1; i < required_cuts; ++i) {
     bst_float cpt = summary.data[i].value;
     if (i == 1 || cpt > cut_values.back()) {
@@ -352,27 +468,28 @@ void AddCutPoint(WQuantileSketch<float, float>::SummaryContainer const &summary,
   }
 }
 
-void AddCategories(std::set<bst_cat_t> const &categories, HistogramCuts *cuts) {
+void AddCategories(std::set<float> const &categories, HistogramCuts *cuts) {
   auto &cut_values = cuts->cut_values_.HostVector();
   for (auto const &v : categories) {
-    cut_values.push_back(v);
+    cut_values.push_back(AsCat(v));
   }
 }
 
-void HostSketchContainer::MakeCuts(HistogramCuts* cuts) {
+template <typename WQSketch>
+void SketchContainerImpl<WQSketch>::MakeCuts(HistogramCuts* cuts) {
   monitor_.Start(__func__);
-  std::vector<WQSketch::SummaryContainer> reduced;
+  std::vector<typename WQSketch::SummaryContainer> reduced;
   std::vector<int32_t> num_cuts;
   this->AllReduce(&reduced, &num_cuts);
 
   cuts->min_vals_.HostVector().resize(sketches_.size(), 0.0f);
-  std::vector<WQSketch::SummaryContainer> final_summaries(reduced.size());
+  std::vector<typename WQSketch::SummaryContainer> final_summaries(reduced.size());
 
   ParallelFor(reduced.size(), n_threads_, Sched::Guided(), [&](size_t fidx) {
     if (IsCat(feature_types_, fidx)) {
       return;
     }
-    WQSketch::SummaryContainer &a = final_summaries[fidx];
+    typename WQSketch::SummaryContainer &a = final_summaries[fidx];
     size_t max_num_bins = std::min(num_cuts[fidx], max_bins_);
     a.Reserve(max_num_bins + 1);
     CHECK(a.data);
@@ -390,11 +507,11 @@ void HostSketchContainer::MakeCuts(HistogramCuts* cuts) {
 
   for (size_t fid = 0; fid < reduced.size(); ++fid) {
     size_t max_num_bins = std::min(num_cuts[fid], max_bins_);
-    WQSketch::SummaryContainer const& a = final_summaries[fid];
+    typename WQSketch::SummaryContainer const& a = final_summaries[fid];
     if (IsCat(feature_types_, fid)) {
       AddCategories(categories_.at(fid), cuts);
     } else {
-      AddCutPoint(a, max_num_bins, cuts);
+      AddCutPoint<WQSketch>(a, max_num_bins, cuts);
       // push a value that is greater than anything
       const bst_float cpt = (a.size > 0) ? a.data[a.size - 1].value
                                          : cuts->min_vals_.HostVector()[fid];
@@ -409,6 +526,90 @@ void HostSketchContainer::MakeCuts(HistogramCuts* cuts) {
     CHECK_GT(cut_size, cuts->cut_ptrs_.HostVector().back());
     cuts->cut_ptrs_.HostVector().push_back(cut_size);
   }
+
+  if (has_categorical_) {
+    for (auto const &feat : categories_) {
+      if (std::any_of(feat.cbegin(), feat.cend(), InvalidCat)) {
+        InvalidCategory();
+      }
+    }
+    auto const &ptrs = cuts->Ptrs();
+    auto const &vals = cuts->Values();
+
+    float max_cat{-std::numeric_limits<float>::infinity()};
+    for (size_t i = 1; i < ptrs.size(); ++i) {
+      if (IsCat(feature_types_, i - 1)) {
+        auto beg = ptrs[i - 1];
+        auto end = ptrs[i];
+        auto feat = Span<float const>{vals}.subspan(beg, end - beg);
+        auto max_elem = *std::max_element(feat.cbegin(), feat.cend());
+        if (max_elem > max_cat) {
+          max_cat = max_elem;
+        }
+      }
+    }
+    cuts->SetCategorical(true, max_cat);
+  }
+
+  monitor_.Stop(__func__);
+}
+
+template class SketchContainerImpl<WQuantileSketch<float, float>>;
+template class SketchContainerImpl<WXQuantileSketch<float, float>>;
+
+HostSketchContainer::HostSketchContainer(int32_t max_bins, MetaInfo const &info,
+                                         std::vector<size_t> columns_size, bool use_group,
+                                         Span<float const> hessian, int32_t n_threads)
+    : SketchContainerImpl{columns_size, max_bins, info.feature_types.ConstHostSpan(), use_group,
+                          n_threads} {
+  monitor_.Init(__func__);
+  ParallelFor(sketches_.size(), n_threads_, Sched::Auto(), [&](auto i) {
+    auto n_bins = std::min(static_cast<size_t>(max_bins_), columns_size_[i]);
+    n_bins = std::max(n_bins, static_cast<decltype(n_bins)>(1));
+    auto eps = 1.0 / (static_cast<float>(n_bins) * WQSketch::kFactor);
+    if (!IsCat(this->feature_types_, i)) {
+      sketches_[i].Init(columns_size_[i], eps);
+      sketches_[i].inqueue.queue.resize(sketches_[i].limit_size * 2);
+    }
+  });
+}
+
+void SortedSketchContainer::PushColPage(SparsePage const &page, MetaInfo const &info,
+                                        Span<float const> hessian) {
+  monitor_.Start(__func__);
+  // glue these conditions using ternary operator to avoid making data copies.
+  auto const &weights =
+      hessian.empty() ? (use_group_ind_ ? UnrollGroupWeights(info)     // use group weight
+                                        : info.weights_.HostVector())  // use sample weight
+                      : MergeWeights(info, hessian, use_group_ind_,
+                                     n_threads_);  // use hessian merged with group/sample weights
+  CHECK_EQ(weights.size(), info.num_row_);
+
+  auto view = page.GetView();
+  ParallelFor(view.Size(), n_threads_, [&](size_t fidx) {
+    auto column = view[fidx];
+    auto &sketch = sketches_[fidx];
+    sketch.Init(max_bins_);
+    // first pass
+    sketch.sum_total = 0.0;
+    for (auto c : column) {
+      sketch.sum_total += weights[c.index];
+    }
+    // second pass
+    if (IsCat(feature_types_, fidx)) {
+      for (auto c : column) {
+        categories_[fidx].emplace(c.fvalue);
+      }
+    } else {
+      for (auto c : column) {
+        sketch.Push(c.fvalue, weights[c.index], max_bins_);
+      }
+    }
+
+    if (!IsCat(feature_types_, fidx) && !column.empty()) {
+      sketch.Finalize(max_bins_);
+    }
+  });
   monitor_.Stop(__func__);
 }
 }  // namespace common

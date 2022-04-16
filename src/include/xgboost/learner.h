@@ -1,5 +1,5 @@
 /*!
- * Copyright 2015-2021 by Contributors
+ * Copyright 2015-2022 by XGBoost Contributors
  * \file learner.h
  * \brief Learner interface that integrates objective, gbm and evaluation together.
  *  This is the user facing XGBoost training module.
@@ -11,15 +11,16 @@
 #include <dmlc/any.h>
 #include <xgboost/base.h>
 #include <xgboost/feature_map.h>
-#include <xgboost/predictor.h>
 #include <xgboost/generic_parameters.h>
 #include <xgboost/host_device_vector.h>
 #include <xgboost/model.h>
+#include <xgboost/predictor.h>
+#include <xgboost/task.h>
 
-#include <utility>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace xgboost {
@@ -44,6 +45,8 @@ enum class PredictionType : std::uint8_t {  // NOLINT
 struct XGBAPIThreadLocalEntry {
   /*! \brief result holder for returning string */
   std::string ret_str;
+  /*! \brief result holder for returning raw buffer */
+  std::vector<char> ret_char_vec;
   /*! \brief result holder for returning strings */
   std::vector<std::string> ret_vec_str;
   /*! \brief result holder for returning string pointers */
@@ -277,8 +280,10 @@ class Learner : public Model, public Configurable, public dmlc::Serializable {
    * \return Created learner.
    */
   static Learner* Create(const std::vector<std::shared_ptr<DMatrix> >& cache_data);
-
-  virtual GenericParameter const& GetGenericParameter() const = 0;
+  /**
+   * \brief Return the context object of this Booster.
+   */
+  virtual GenericParameter const* Ctx() const = 0;
   /*!
    * \brief Get configuration arguments currently stored by the learner
    * \return Key-value pairs representing configuration arguments
@@ -308,11 +313,13 @@ struct LearnerModelParam {
   uint32_t num_feature { 0 };
   /* \brief number of classes, if it is multi-class classification  */
   uint32_t num_output_group { 0 };
+  /* \brief Current task, determined by objective. */
+  ObjInfo task{ObjInfo::kRegression};
 
   LearnerModelParam() = default;
   // As the old `LearnerModelParamLegacy` is still used by binary IO, we keep
   // this one as an immutable copy.
-  LearnerModelParam(LearnerModelParamLegacy const& user_param, float base_margin);
+  LearnerModelParam(LearnerModelParamLegacy const& user_param, float base_margin, ObjInfo t);
   /* \brief Whether this parameter is initialized with LearnerModelParamLegacy. */
   bool Initialized() const { return num_feature != 0; }
 };

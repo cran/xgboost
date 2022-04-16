@@ -48,7 +48,10 @@ class Metric : public Configurable {
    * override this function to maintain internal configuration
    * \param out pointer to output JSON object
    */
-  void SaveConfig(Json*) const override {}
+  void SaveConfig(Json* p_out) const override {
+    auto& out = *p_out;
+    out["name"] = String(this->Name());
+  }
 
   /*!
    * \brief evaluate a specific metric
@@ -58,9 +61,8 @@ class Metric : public Configurable {
    *        the average statistics across all the node,
    *        this is only supported by some metrics
    */
-  virtual bst_float Eval(const HostDeviceVector<bst_float>& preds,
-                         const MetaInfo& info,
-                         bool distributed) = 0;
+  virtual double Eval(const HostDeviceVector<bst_float> &preds,
+                      const MetaInfo &info, bool distributed) = 0;
   /*! \return name of metric */
   virtual const char* Name() const = 0;
   /*! \brief virtual destructor */

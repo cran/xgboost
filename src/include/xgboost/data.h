@@ -1,5 +1,5 @@
 /*!
- * Copyright (c) 2015-2021 by Contributors
+ * Copyright (c) 2015-2022 by XGBoost Contributors
  * \file data.h
  * \brief The input data structure of xgboost.
  * \author Tianqi Chen
@@ -11,12 +11,16 @@
 #include <dmlc/data.h>
 #include <dmlc/serializer.h>
 #include <xgboost/base.h>
-#include <xgboost/span.h>
+#include <xgboost/generic_parameters.h>
 #include <xgboost/host_device_vector.h>
+#include <xgboost/linalg.h>
+#include <xgboost/span.h>
+#include <xgboost/string_view.h>
 
+#include <algorithm>
+#include <limits>
 #include <memory>
 #include <numeric>
-#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,10 +38,7 @@ enum class DataType : uint8_t {
   kStr = 5
 };
 
-enum class FeatureType : uint8_t {
-  kNumerical,
-  kCategorical
-};
+enum class FeatureType : uint8_t { kNumerical = 0, kCategorical = 1 };
 
 /*!
  * \brief Meta information about dataset, always sit in memory.
@@ -45,7 +46,7 @@ enum class FeatureType : uint8_t {
 class MetaInfo {
  public:
   /*! \brief number of data fields in MetaInfo */
-  static constexpr uint64_t kNumField = 11;
+  static constexpr uint64_t kNumField = 12;
 
   /*! \brief number of rows in the data */
   uint64_t num_row_{0};  // NOLINT
@@ -54,7 +55,7 @@ class MetaInfo {
   /*! \brief number of nonzero entries in the data */
   uint64_t num_nonzero_{0};  // NOLINT
   /*! \brief label of each instance */
-  HostDeviceVector<bst_float> labels_;  // NOLINT
+  linalg::Tensor<float, 2> labels;
   /*!
    * \brief the index of begin and end of a group
    *  needed when the learning task is ranking.
@@ -67,7 +68,7 @@ class MetaInfo {
    * if specified, xgboost will start from this init margin
    * can be used to specify initial prediction to boost from.
    */
-  HostDeviceVector<bst_float> base_margin_;  // NOLINT
+  linalg::Tensor<float, 2> base_margin_;  // NOLINT
   /*!
    * \brief lower bound of the label, to be used for survival analysis (censored regression)
    */
@@ -93,7 +94,7 @@ class MetaInfo {
    * \brief Weight of each feature, used to define the probability of each feature being
    *        selected when using column sampling.
    */
-  HostDeviceVector<float> feature_weigths;
+  HostDeviceVector<float> feature_weights;
 
   /*! \brief default constructor */
   MetaInfo()  = default;
@@ -117,13 +118,13 @@ class MetaInfo {
   }
   /*! \brief get sorted indexes (argsort) of labels by absolute value (used by cox loss) */
   inline const std::vector<size_t>& LabelAbsSort() const {
-    if (label_order_cache_.size() == labels_.Size()) {
+    if (label_order_cache_.size() == labels.Size()) {
       return label_order_cache_;
     }
-    label_order_cache_.resize(labels_.Size());
+    label_order_cache_.resize(labels.Size());
     std::iota(label_order_cache_.begin(), label_order_cache_.end(), 0);
-    const auto& l = labels_.HostVector();
-    XGBOOST_PARALLEL_SORT(label_order_cache_.begin(), label_order_cache_.end(),
+    const auto& l = labels.Data()->HostVector();
+    XGBOOST_PARALLEL_STABLE_SORT(label_order_cache_.begin(), label_order_cache_.end(),
               [&l](size_t i1, size_t i2) {return std::abs(l[i1]) < std::abs(l[i2]);});
 
     return label_order_cache_;
@@ -147,17 +148,13 @@ class MetaInfo {
    * \param dtype The type of the source data.
    * \param num Number of elements in the source array.
    */
-  void SetInfo(const char* key, const void* dptr, DataType dtype, size_t num);
+  void SetInfo(Context const& ctx, const char* key, const void* dptr, DataType dtype, size_t num);
   /*!
    * \brief Set information in the meta info with array interface.
    * \param key The key of the information.
    * \param interface_str String representation of json format array interface.
-   *
-   *          [ column_0, column_1, ... column_n ]
-   *
-   *        Right now only 1 column is permitted.
    */
-  void SetInfo(const char* key, std::string const& interface_str);
+  void SetInfo(Context const& ctx, StringView key, StringView interface_str);
 
   void GetInfo(char const* key, bst_ulong* out_len, DataType dtype,
                const void** out_dptr) const;
@@ -179,6 +176,9 @@ class MetaInfo {
   void Extend(MetaInfo const& that, bool accumulate_rows, bool check_column);
 
  private:
+  void SetInfoFromHost(Context const& ctx, StringView key, Json arr);
+  void SetInfoFromCUDA(Context const& ctx, StringView key, Json arr);
+
   /*! \brief argsort of labels */
   mutable std::vector<size_t> label_order_cache_;
 };
@@ -201,6 +201,9 @@ struct Entry {
   inline static bool CmpValue(const Entry& a, const Entry& b) {
     return a.fvalue < b.fvalue;
   }
+  static bool CmpIndex(Entry const& a, Entry const& b) {
+    return a.index < b.index;
+  }
   inline bool operator==(const Entry& other) const {
     return (this->index == other.index && this->fvalue == other.fvalue);
   }
@@ -218,23 +221,32 @@ struct BatchParam {
   common::Span<float> hess;
   /*! \brief Whether should DMatrix regenerate the batch.  Only used for GHistIndex. */
   bool regen {false};
+  /*! \brief Parameter used to generate column matrix for hist. */
+  double sparse_thresh{std::numeric_limits<double>::quiet_NaN()};
 
   BatchParam() = default;
+  // GPU Hist
   BatchParam(int32_t device, int32_t max_bin)
       : gpu_id{device}, max_bin{max_bin} {}
+  // Hist
+  BatchParam(int32_t max_bin, double sparse_thresh)
+      : max_bin{max_bin}, sparse_thresh{sparse_thresh} {}
+  // Approx
   /**
    * \brief Get batch with sketch weighted by hessian.  The batch will be regenerated if
    *        the span is changed, so caller should keep the span for each iteration.
    */
-  BatchParam(int32_t device, int32_t max_bin, common::Span<float> hessian,
-             bool regenerate = false)
-      : gpu_id{device}, max_bin{max_bin}, hess{hessian}, regen{regenerate} {}
+  BatchParam(int32_t max_bin, common::Span<float> hessian, bool regenerate)
+      : max_bin{max_bin}, hess{hessian}, regen{regenerate} {}
 
-  bool operator!=(const BatchParam& other) const {
+  bool operator!=(BatchParam const& other) const {
     if (hess.empty() && other.hess.empty()) {
       return gpu_id != other.gpu_id || max_bin != other.max_bin;
     }
     return gpu_id != other.gpu_id || max_bin != other.max_bin || hess.data() != other.hess.data();
+  }
+  bool operator==(BatchParam const& other) const {
+    return !(*this != other);
   }
 };
 
@@ -302,24 +314,18 @@ class SparsePage {
     base_rowid = row_id;
   }
 
-  SparsePage GetTranspose(int num_columns) const;
+  SparsePage GetTranspose(int num_columns, int32_t n_threads) const;
 
-  void SortRows() {
-    auto ncol = static_cast<bst_omp_uint>(this->Size());
-    dmlc::OMPException exc;
-#pragma omp parallel for schedule(dynamic, 1)
-    for (bst_omp_uint i = 0; i < ncol; ++i) {
-      exc.Run([&]() {
-        if (this->offset.HostVector()[i] < this->offset.HostVector()[i + 1]) {
-          std::sort(
-              this->data.HostVector().begin() + this->offset.HostVector()[i],
-              this->data.HostVector().begin() + this->offset.HostVector()[i + 1],
-              Entry::CmpValue);
-        }
-      });
-    }
-    exc.Rethrow();
-  }
+  /**
+   * \brief Sort the column index.
+   */
+  void SortIndices(int32_t n_threads);
+  /**
+   * \brief Check wether the column index is sorted.
+   */
+  bool IsIndicesSorted(int32_t n_threads) const;
+
+  void SortRows(int32_t n_threads);
 
   /**
    * \brief Pushes external data batch onto this page
@@ -472,24 +478,32 @@ class DMatrix {
   DMatrix()  = default;
   /*! \brief meta information of the dataset */
   virtual MetaInfo& Info() = 0;
-  virtual void SetInfo(const char *key, const void *dptr, DataType dtype,
-                       size_t num) {
-    this->Info().SetInfo(key, dptr, dtype, num);
+  virtual void SetInfo(const char* key, const void* dptr, DataType dtype, size_t num) {
+    auto const& ctx = *this->Ctx();
+    this->Info().SetInfo(ctx, key, dptr, dtype, num);
   }
   virtual void SetInfo(const char* key, std::string const& interface_str) {
-    this->Info().SetInfo(key, interface_str);
+    auto const& ctx = *this->Ctx();
+    this->Info().SetInfo(ctx, key, StringView{interface_str});
   }
   /*! \brief meta information of the dataset */
   virtual const MetaInfo& Info() const = 0;
 
   /*! \brief Get thread local memory for returning data from DMatrix. */
   XGBAPIThreadLocalEntry& GetThreadLocal() const;
+  /**
+   * \brief Get the context object of this DMatrix.  The context is created during construction of
+   *        DMatrix with user specified `nthread` parameter.
+   */
+  virtual Context const* Ctx() const = 0;
 
   /**
    * \brief Gets batches. Use range based for loop over BatchSet to access individual batches.
    */
-  template<typename T>
-  BatchSet<T> GetBatches(const BatchParam& param = {});
+  template <typename T>
+  BatchSet<T> GetBatches();
+  template <typename T>
+  BatchSet<T> GetBatches(const BatchParam& param);
   template <typename T>
   bool PageExists() const;
 
@@ -603,7 +617,7 @@ class DMatrix {
 };
 
 template<>
-inline BatchSet<SparsePage> DMatrix::GetBatches(const BatchParam&) {
+inline BatchSet<SparsePage> DMatrix::GetBatches() {
   return GetRowBatches();
 }
 
@@ -618,12 +632,12 @@ inline bool DMatrix::PageExists<SparsePage>() const {
 }
 
 template<>
-inline BatchSet<CSCPage> DMatrix::GetBatches(const BatchParam&) {
+inline BatchSet<CSCPage> DMatrix::GetBatches() {
   return GetColumnBatches();
 }
 
 template<>
-inline BatchSet<SortedCSCPage> DMatrix::GetBatches(const BatchParam&) {
+inline BatchSet<SortedCSCPage> DMatrix::GetBatches() {
   return GetSortedColumnBatches();
 }
 

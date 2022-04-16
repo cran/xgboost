@@ -1,5 +1,5 @@
 /*!
- * Copyright 2014-2019 by Contributors
+ * Copyright 2014-2022 by XGBoost Contributors
  * \file updater_histmaker.cc
  * \brief use histogram counting to construct a tree
  * \author Tianqi Chen
@@ -173,7 +173,8 @@ class HistMaker: public BaseMaker {
         if (c.sum_hess >= param_.min_child_weight) {
           double loss_chg = CalcGain(param_, s.GetGrad(), s.GetHess()) +
                             CalcGain(param_, c.GetGrad(), c.GetHess()) - root_gain;
-          if (best->Update(static_cast<bst_float>(loss_chg), fid, hist.cut[i], false, s, c)) {
+          if (best->Update(static_cast<bst_float>(loss_chg), fid, hist.cut[i],
+                           false, false, s, c)) {
             *left_sum = s;
           }
         }
@@ -187,7 +188,8 @@ class HistMaker: public BaseMaker {
         if (c.sum_hess >= param_.min_child_weight) {
           double loss_chg = CalcGain(param_, s.GetGrad(), s.GetHess()) +
                             CalcGain(param_, c.GetGrad(), c.GetHess()) - root_gain;
-          if (best->Update(static_cast<bst_float>(loss_chg), fid, hist.cut[i-1], true, c, s)) {
+          if (best->Update(static_cast<bst_float>(loss_chg), fid,
+                           hist.cut[i - 1], true, false, c, s)) {
             *left_sum = c;
           }
         }
@@ -201,27 +203,22 @@ class HistMaker: public BaseMaker {
     // get the best split condition for each node
     std::vector<SplitEntry> sol(qexpand_.size());
     std::vector<GradStats> left_sum(qexpand_.size());
-    auto nexpand = static_cast<bst_omp_uint>(qexpand_.size());
-    dmlc::OMPException exc;
-#pragma omp parallel for schedule(dynamic, 1)
-    for (bst_omp_uint wid = 0; wid < nexpand; ++wid) {
-      exc.Run([&]() {
-        const int nid = qexpand_[wid];
-        CHECK_EQ(node2workindex_[nid], static_cast<int>(wid));
-        SplitEntry &best = sol[wid];
-        GradStats &node_sum = wspace_.hset[0][num_feature + wid * (num_feature + 1)].data[0];
-        for (size_t i = 0; i < feature_set.size(); ++i) {
-          // Query is thread safe as it's a const function.
-          if (!this->interaction_constraints_.Query(nid, feature_set[i])) {
-            continue;
-          }
-
-          EnumerateSplit(this->wspace_.hset[0][i + wid * (num_feature+1)],
-                        node_sum, feature_set[i], &best, &left_sum[wid]);
+    auto nexpand = qexpand_.size();
+    common::ParallelFor(nexpand, ctx_->Threads(), common::Sched::Dyn(1), [&](auto wid) {
+      const int nid = qexpand_[wid];
+      CHECK_EQ(node2workindex_[nid], static_cast<int>(wid));
+      SplitEntry &best = sol[wid];
+      GradStats &node_sum = wspace_.hset[0][num_feature + wid * (num_feature + 1)].data[0];
+      for (size_t i = 0; i < feature_set.size(); ++i) {
+        // Query is thread safe as it's a const function.
+        if (!this->interaction_constraints_.Query(nid, feature_set[i])) {
+          continue;
         }
-      });
-    }
-    exc.Rethrow();
+
+        EnumerateSplit(this->wspace_.hset[0][i + wid * (num_feature + 1)], node_sum, feature_set[i],
+                       &best, &left_sum[wid]);
+      }
+    });
     // get the best result, we can synchronize the solution
     for (bst_omp_uint wid = 0; wid < nexpand; ++wid) {
       const bst_node_t nid = qexpand_[wid];
@@ -339,26 +336,19 @@ class CQHistMaker: public HistMaker {
     // if it is C++11, use lazy evaluation for Allreduce,
     // to gain speedup in recovery
     auto lazy_get_hist = [&]() {
-      thread_hist_.resize(omp_get_max_threads());
+      thread_hist_.resize(ctx_->Threads());
       // start accumulating statistics
       for (const auto &batch : p_fmat->GetBatches<SortedCSCPage>()) {
         auto page = batch.GetView();
         // start enumeration
-        const auto nsize = static_cast<bst_omp_uint>(fset.size());
-        dmlc::OMPException exc;
-#pragma omp parallel for schedule(dynamic, 1)
-        for (bst_omp_uint i = 0; i < nsize; ++i) {
-          exc.Run([&]() {
-            int fid = fset[i];
-            int offset = feat2workindex_[fid];
-            if (offset >= 0) {
-              this->UpdateHistCol(gpair, page[fid], info, tree,
-                                  fset, offset,
-                                  &thread_hist_[omp_get_thread_num()]);
-            }
-          });
-        }
-        exc.Rethrow();
+        common::ParallelFor(fset.size(), ctx_->Threads(), common::Sched::Dyn(1), [&](auto i) {
+          int fid = fset[i];
+          int offset = feat2workindex_[fid];
+          if (offset >= 0) {
+            this->UpdateHistCol(gpair, page[fid], info, tree, fset, offset,
+                                &thread_hist_[omp_get_thread_num()]);
+          }
+        });
       }
       // update node statistics.
       this->GetNodeStats(gpair, *p_fmat, tree,
@@ -410,7 +400,7 @@ class CQHistMaker: public HistMaker {
     }
     {
       // get summary
-      thread_sketch_.resize(omp_get_max_threads());
+      thread_sketch_.resize(ctx_->Threads());
 
       // TWOPASS: use the real set + split set in the column iteration.
       this->SetDefaultPostion(p_fmat, tree);
@@ -424,21 +414,15 @@ class CQHistMaker: public HistMaker {
         this->CorrectNonDefaultPositionByBatch(batch, fsplit_set_, tree);
         auto page = batch.GetView();
         // start enumeration
-        const auto nsize = static_cast<bst_omp_uint>(work_set_.size());
-        dmlc::OMPException exc;
-#pragma omp parallel for schedule(dynamic, 1)
-        for (bst_omp_uint i = 0; i < nsize; ++i) {
-          exc.Run([&]() {
-            int fid = work_set_[i];
-            int offset = feat2workindex_[fid];
-            if (offset >= 0) {
-              this->UpdateSketchCol(gpair, page[fid], tree,
-                                    work_set_size, offset,
-                                    &thread_sketch_[omp_get_thread_num()]);
-            }
-          });
-        }
-        exc.Rethrow();
+        common::ParallelFor(work_set_.size(), ctx_->Threads(), common::Sched::Dyn(1),
+                            [&](auto i) {
+                              int fid = work_set_[i];
+                              int offset = feat2workindex_[fid];
+                              if (offset >= 0) {
+                                this->UpdateSketchCol(gpair, page[fid], tree, work_set_size, offset,
+                                                      &thread_sketch_[omp_get_thread_num()]);
+                              }
+                            });
       }
       for (size_t i = 0; i < sketchs_.size(); ++i) {
         common::WXQuantileSketch<bst_float, bst_float>::SummaryContainer out;
@@ -639,126 +623,10 @@ class CQHistMaker: public HistMaker {
   std::vector<common::WXQuantileSketch<bst_float, bst_float> > sketchs_;
 };
 
-// global proposal
-class GlobalProposalHistMaker: public CQHistMaker {
- public:
-  char const* Name() const override {
-    return "grow_histmaker";
-  }
-
- protected:
-  void ResetPosAndPropose(const std::vector<GradientPair> &gpair,
-                          DMatrix *p_fmat,
-                          const std::vector<bst_feature_t> &fset,
-                          const RegTree &tree) override {
-    if (this->qexpand_.size() == 1) {
-      cached_rptr_.clear();
-      cached_cut_.clear();
-    }
-    if (cached_rptr_.size() == 0) {
-      CHECK_EQ(this->qexpand_.size(), 1U);
-      CQHistMaker::ResetPosAndPropose(gpair, p_fmat, fset, tree);
-      cached_rptr_ = this->wspace_.rptr;
-      cached_cut_ = this->wspace_.cut;
-    } else {
-      this->wspace_.cut.clear();
-      this->wspace_.rptr.clear();
-      this->wspace_.rptr.push_back(0);
-      for (size_t i = 0; i < this->qexpand_.size(); ++i) {
-        for (size_t j = 0; j < cached_rptr_.size() - 1; ++j) {
-          this->wspace_.rptr.push_back(
-              this->wspace_.rptr.back() + cached_rptr_[j + 1] - cached_rptr_[j]);
-        }
-        this->wspace_.cut.insert(this->wspace_.cut.end(), cached_cut_.begin(), cached_cut_.end());
-      }
-      CHECK_EQ(this->wspace_.rptr.size(),
-               (fset.size() + 1) * this->qexpand_.size() + 1);
-      CHECK_EQ(this->wspace_.rptr.back(), this->wspace_.cut.size());
-    }
-  }
-
-  // code to create histogram
-  void CreateHist(const std::vector<GradientPair> &gpair,
-                  DMatrix *p_fmat,
-                  const std::vector<bst_feature_t> &fset,
-                  const RegTree &tree) override {
-    const MetaInfo &info = p_fmat->Info();
-    // fill in reverse map
-    this->feat2workindex_.resize(tree.param.num_feature);
-    this->work_set_ = fset;
-    std::fill(this->feat2workindex_.begin(), this->feat2workindex_.end(), -1);
-    for (size_t i = 0; i < fset.size(); ++i) {
-      this->feat2workindex_[fset[i]] = static_cast<int>(i);
-    }
-    // start to work
-    this->wspace_.Configure(1);
-    // to gain speedup in recovery
-    {
-      this->thread_hist_.resize(omp_get_max_threads());
-
-      // TWOPASS: use the real set + split set in the column iteration.
-      this->SetDefaultPostion(p_fmat, tree);
-      this->work_set_.insert(this->work_set_.end(), this->fsplit_set_.begin(),
-                             this->fsplit_set_.end());
-      XGBOOST_PARALLEL_SORT(this->work_set_.begin(), this->work_set_.end(),
-                            std::less<>{});
-      this->work_set_.resize(
-          std::unique(this->work_set_.begin(), this->work_set_.end()) - this->work_set_.begin());
-
-      // start accumulating statistics
-      for (const auto &batch : p_fmat->GetBatches<SortedCSCPage>()) {
-        // TWOPASS: use the real set + split set in the column iteration.
-        this->CorrectNonDefaultPositionByBatch(batch, this->fsplit_set_, tree);
-        auto page = batch.GetView();
-
-        // start enumeration
-        const auto nsize = static_cast<bst_omp_uint>(this->work_set_.size());
-        dmlc::OMPException exc;
-#pragma omp parallel for schedule(dynamic, 1)
-        for (bst_omp_uint i = 0; i < nsize; ++i) {
-          exc.Run([&]() {
-            int fid = this->work_set_[i];
-            int offset = this->feat2workindex_[fid];
-            if (offset >= 0) {
-              this->UpdateHistCol(gpair, page[fid], info, tree,
-                                  fset, offset,
-                                  &this->thread_hist_[omp_get_thread_num()]);
-            }
-          });
-        }
-        exc.Rethrow();
-      }
-
-      // update node statistics.
-      this->GetNodeStats(gpair, *p_fmat, tree,
-                         &(this->thread_stats_), &(this->node_stats_));
-      for (const int nid : this->qexpand_) {
-        const int wid = this->node2workindex_[nid];
-        this->wspace_.hset[0][fset.size() + wid * (fset.size()+1)]
-            .data[0] = this->node_stats_[nid];
-      }
-    }
-    this->histred_.Allreduce(dmlc::BeginPtr(this->wspace_.hset[0].data),
-                            this->wspace_.hset[0].data.size());
-  }
-
-  // cached unit pointer
-  std::vector<unsigned> cached_rptr_;
-  // cached cut value.
-  std::vector<bst_float> cached_cut_;
-};
-
 XGBOOST_REGISTER_TREE_UPDATER(LocalHistMaker, "grow_local_histmaker")
 .describe("Tree constructor that uses approximate histogram construction.")
-.set_body([]() {
+.set_body([](ObjInfo) {
     return new CQHistMaker();
-  });
-
-// The updater for approx tree method.
-XGBOOST_REGISTER_TREE_UPDATER(HistMaker, "grow_histmaker")
-.describe("Tree constructor that uses approximate global of histogram construction.")
-.set_body([]() {
-    return new GlobalProposalHistMaker();
   });
 }  // namespace tree
 }  // namespace xgboost

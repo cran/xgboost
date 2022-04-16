@@ -1,7 +1,5 @@
 /*!
- * Copyright 2015-2019 by Contributors
- * \file common.h
- * \brief Threading utilities
+ * Copyright 2019-2022 by XGBoost Contributors
  */
 #ifndef XGBOOST_COMMON_THREADING_UTILS_H_
 #define XGBOOST_COMMON_THREADING_UTILS_H_
@@ -130,8 +128,7 @@ class BlockedSpace2d {
 template <typename Func>
 void ParallelFor2d(const BlockedSpace2d& space, int nthreads, Func func) {
   const size_t num_blocks_in_space = space.Size();
-  nthreads = std::min(nthreads, omp_get_max_threads());
-  nthreads = std::max(nthreads, 1);
+  CHECK_GE(nthreads, 1);
 
   dmlc::OMPException exc;
 #pragma omp parallel num_threads(nthreads)
@@ -178,6 +175,7 @@ void ParallelFor(Index size, int32_t n_threads, Sched sched, Func fn) {
   using OmpInd = Index;
 #endif
   OmpInd length = static_cast<OmpInd>(size);
+  CHECK_GE(n_threads, 1);
 
   dmlc::OMPException exc;
   switch (sched.sched) {
@@ -228,17 +226,9 @@ void ParallelFor(Index size, int32_t n_threads, Sched sched, Func fn) {
 }
 
 template <typename Index, typename Func>
-void ParallelFor(Index size, size_t n_threads, Func fn) {
+void ParallelFor(Index size, int32_t n_threads, Func fn) {
   ParallelFor(size, n_threads, Sched::Static(), fn);
 }
-
-// FIXME(jiamingy): Remove this function to get rid of `omp_set_num_threads`, which sets a
-// global variable in runtime and affects other programs in the same process.
-template <typename Index, typename Func>
-void ParallelFor(Index size, Func fn) {
-  ParallelFor(size, omp_get_max_threads(), Sched::Static(), fn);
-}                                        // !defined(_OPENMP)
-
 
 inline int32_t OmpGetThreadLimit() {
   int32_t limit = omp_get_thread_limit();
@@ -246,42 +236,53 @@ inline int32_t OmpGetThreadLimit() {
   return limit;
 }
 
-/* \brief Configure parallel threads.
- *
- * \param p_threads Number of threads, when it's less than or equal to 0, this function
- *        will change it to number of process on system.
- *
- * \return Global openmp max threads before configuration.
- */
-inline int32_t OmpSetNumThreads(int32_t* p_threads) {
-  auto& threads = *p_threads;
-  int32_t nthread_original = omp_get_max_threads();
-  if (threads <= 0) {
-    threads = omp_get_num_procs();
-  }
-  threads = std::min(threads, OmpGetThreadLimit());
-  omp_set_num_threads(threads);
-  return nthread_original;
-}
-
-inline int32_t OmpSetNumThreadsWithoutHT(int32_t* p_threads) {
-  auto& threads = *p_threads;
-  int32_t nthread_original = omp_get_max_threads();
-  if (threads <= 0) {
-    threads = nthread_original;
-  }
-  threads = std::min(threads, OmpGetThreadLimit());
-  omp_set_num_threads(threads);
-  return nthread_original;
-}
+int32_t GetCfsCPUCount() noexcept;
 
 inline int32_t OmpGetNumThreads(int32_t n_threads) {
   if (n_threads <= 0) {
-    n_threads = omp_get_num_procs();
+    n_threads = std::min(omp_get_num_procs(), omp_get_max_threads());
   }
   n_threads = std::min(n_threads, OmpGetThreadLimit());
+  n_threads = std::max(n_threads, 1);
   return n_threads;
 }
+
+
+/*!
+ * \brief A C-style array with in-stack allocation. As long as the array is smaller than
+ * MaxStackSize, it will be allocated inside the stack. Otherwise, it will be
+ * heap-allocated.
+ */
+template <typename T, size_t MaxStackSize>
+class MemStackAllocator {
+ public:
+  explicit MemStackAllocator(size_t required_size) : required_size_(required_size) {
+    if (MaxStackSize >= required_size_) {
+      ptr_ = stack_mem_;
+    } else {
+      ptr_ = reinterpret_cast<T*>(malloc(required_size_ * sizeof(T)));
+    }
+    if (!ptr_) {
+      throw std::bad_alloc{};
+    }
+  }
+  MemStackAllocator(size_t required_size, T init) : MemStackAllocator{required_size} {
+    std::fill_n(ptr_, required_size_, init);
+  }
+
+  ~MemStackAllocator() {
+    if (required_size_ > MaxStackSize) {
+      free(ptr_);
+    }
+  }
+  T& operator[](size_t i) { return ptr_[i]; }
+  T const& operator[](size_t i) const { return ptr_[i]; }
+
+ private:
+  T* ptr_ = nullptr;
+  size_t required_size_;
+  T stack_mem_[MaxStackSize];
+};
 }  // namespace common
 }  // namespace xgboost
 

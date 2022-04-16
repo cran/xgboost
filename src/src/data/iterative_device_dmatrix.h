@@ -21,6 +21,7 @@ namespace data {
 
 class IterativeDeviceDMatrix : public DMatrix {
   MetaInfo info_;
+  Context ctx_;
   BatchParam batch_param_;
   std::shared_ptr<EllpackPage> page_;
 
@@ -69,16 +70,18 @@ class IterativeDeviceDMatrix : public DMatrix {
 
   bool SingleColBlock() const override { return false; }
 
-  MetaInfo& Info() override {
-    return info_;
-  }
-  MetaInfo const& Info() const override {
-    return info_;
-  }
+  MetaInfo &Info() override { return info_; }
+  MetaInfo const &Info() const override { return info_; }
+
+  Context const *Ctx() const override { return &ctx_; }
 };
 
 #if !defined(XGBOOST_USE_CUDA)
 inline void IterativeDeviceDMatrix::Initialize(DataIterHandle iter, float missing, int nthread) {
+  // silent the warning about unused variables.
+  (void)(proxy_);
+  (void)(reset_);
+  (void)(next_);
   common::AssertGPUSupport();
 }
 inline BatchSet<EllpackPage> IterativeDeviceDMatrix::GetEllpackBatches(const BatchParam& param) {

@@ -1,5 +1,5 @@
 /*!
- * Copyright 2014-2021 by Contributors
+ * Copyright 2014-2022 by Contributors
  * \file learner.cc
  * \brief Implementation of learning algorithm.
  * \author Tianqi Chen
@@ -88,12 +88,15 @@ struct LearnerModelParamLegacy : public dmlc::Parameter<LearnerModelParamLegacy>
   /*! \brief the version of XGBoost. */
   uint32_t major_version;
   uint32_t minor_version;
+
+  uint32_t num_target{1};
   /*! \brief reserved field */
-  int reserved[27];
+  int reserved[26];
   /*! \brief constructor */
   LearnerModelParamLegacy() {
     std::memset(this, 0, sizeof(LearnerModelParamLegacy));
     base_score = 0.5f;
+    num_target = 1;
     major_version = std::get<0>(Version::Self());
     minor_version = std::get<1>(Version::Self());
     static_assert(sizeof(LearnerModelParamLegacy) == 136,
@@ -119,6 +122,12 @@ struct LearnerModelParamLegacy : public dmlc::Parameter<LearnerModelParamLegacy>
     CHECK(ret.ec == std::errc());
     obj["num_class"] =
         std::string{integers, static_cast<size_t>(std::distance(integers, ret.ptr))};
+
+    ret = to_chars(integers, integers + NumericLimits<int64_t>::kToCharsSize,
+                   static_cast<int64_t>(num_target));
+    obj["num_target"] =
+        std::string{integers, static_cast<size_t>(std::distance(integers, ret.ptr))};
+
     return Json(std::move(obj));
   }
   void FromJson(Json const& obj) {
@@ -126,6 +135,11 @@ struct LearnerModelParamLegacy : public dmlc::Parameter<LearnerModelParamLegacy>
     std::map<std::string, std::string> m;
     m["num_feature"] = get<String const>(j_param.at("num_feature"));
     m["num_class"] = get<String const>(j_param.at("num_class"));
+    auto n_targets_it = j_param.find("num_target");
+    if (n_targets_it != j_param.cend()) {
+      m["num_target"] = get<String const>(n_targets_it->second);
+    }
+
     this->Init(m);
     std::string str = get<String const>(j_param.at("base_score"));
     from_chars(str.c_str(), str.c_str() + str.size(), base_score);
@@ -139,6 +153,7 @@ struct LearnerModelParamLegacy : public dmlc::Parameter<LearnerModelParamLegacy>
     dmlc::ByteSwap(&x.contain_eval_metrics, sizeof(x.contain_eval_metrics), 1);
     dmlc::ByteSwap(&x.major_version, sizeof(x.major_version), 1);
     dmlc::ByteSwap(&x.minor_version, sizeof(x.minor_version), 1);
+    dmlc::ByteSwap(&x.num_target, sizeof(x.num_target), 1);
     dmlc::ByteSwap(x.reserved, sizeof(x.reserved[0]), sizeof(x.reserved) / sizeof(x.reserved[0]));
     return x;
   }
@@ -156,16 +171,24 @@ struct LearnerModelParamLegacy : public dmlc::Parameter<LearnerModelParamLegacy>
     DMLC_DECLARE_FIELD(num_class).set_default(0).set_lower_bound(0).describe(
         "Number of class option for multi-class classifier. "
         " By default equals 0 and corresponds to binary classifier.");
+    DMLC_DECLARE_FIELD(num_target)
+        .set_default(1)
+        .set_lower_bound(1)
+        .describe("Number of target for multi-target regression.");
   }
 };
 
-LearnerModelParam::LearnerModelParam(
-    LearnerModelParamLegacy const &user_param, float base_margin)
-    : base_score{base_margin}, num_feature{user_param.num_feature},
-      num_output_group{user_param.num_class == 0
-                       ? 1
-                       : static_cast<uint32_t>(user_param.num_class)}
-{}
+LearnerModelParam::LearnerModelParam(LearnerModelParamLegacy const& user_param, float base_margin,
+                                     ObjInfo t)
+    : base_score{base_margin}, num_feature{user_param.num_feature}, task{t} {
+  auto n_classes = std::max(static_cast<uint32_t>(user_param.num_class), 1u);
+  auto n_targets = user_param.num_target;
+  num_output_group = std::max(n_classes, n_targets);
+  // For version < 1.6, n_targets == 0
+  CHECK(n_classes <= 1 || n_targets <= 1)
+      << "Multi-class multi-output is not yet supported. n_classes:" << n_classes
+      << ", n_targets:" << n_targets;
+}
 
 struct LearnerTrainParam : public XGBoostParameter<LearnerTrainParam> {
   // data split mode, can be row, col, or none.
@@ -205,6 +228,8 @@ DMLC_REGISTER_PARAMETER(GenericParameter);
 int constexpr GenericParameter::kCpuId;
 int64_t constexpr GenericParameter::kDefaultSeed;
 
+GenericParameter::GenericParameter() : cfs_cpu_count_{common::GetCfsCPUCount()} {}
+
 void GenericParameter::ConfigureGpuId(bool require_gpu) {
 #if defined(XGBOOST_USE_CUDA)
   if (gpu_id == kCpuId) {  // 0. User didn't specify the `gpu_id'
@@ -239,7 +264,11 @@ void GenericParameter::ConfigureGpuId(bool require_gpu) {
 }
 
 int32_t GenericParameter::Threads() const {
-  return common::OmpGetNumThreads(nthread);
+  auto n_threads = common::OmpGetNumThreads(nthread);
+  if (cfs_cpu_count_ > 0) {
+    n_threads = std::min(n_threads, cfs_cpu_count_);
+  }
+  return n_threads;
 }
 
 using LearnerAPIThreadLocalStore =
@@ -247,6 +276,21 @@ using LearnerAPIThreadLocalStore =
 
 using ThreadLocalPredictionCache =
     dmlc::ThreadLocalStore<std::map<Learner const *, PredictionContainer>>;
+
+namespace {
+StringView ModelMsg() {
+  return StringView{
+      R"doc(
+  If you are loading a serialized model (like pickle in Python, RDS in R) generated by
+  older XGBoost, please export the model by calling `Booster.save_model` from that version
+  first, then load it back in current version. See:
+
+    https://xgboost.readthedocs.io/en/latest/tutorials/saving_model.html
+
+  for more details about differences between saving model and serializing.
+)doc"};
+}
+}  // anonymous namespace
 
 class LearnerConfiguration : public Learner {
  private:
@@ -308,7 +352,6 @@ class LearnerConfiguration : public Learner {
     generic_parameters_.UpdateAllowUnknown(args);
 
     ConsoleLogger::Configure(args);
-    common::OmpSetNumThreads(&generic_parameters_.nthread);
 
     // add additional parameters
     // These are cosntraints that need to be satisfied.
@@ -326,6 +369,8 @@ class LearnerConfiguration : public Learner {
     args = {cfg_.cbegin(), cfg_.cend()};  // renew
     this->ConfigureObjective(old_tparam, &args);
 
+    auto task = this->ConfigureTargets();
+
     // Before 1.0.0, we save `base_score` into binary as a transformed value by objective.
     // After 1.0.0 we save the value provided by user and keep it immutable instead.  To
     // keep the stability, we initialize it in binary LoadModel instead of configuration.
@@ -339,13 +384,12 @@ class LearnerConfiguration : public Learner {
     // - model is created from scratch.
     // - model is configured second time due to change of parameter
     if (!learner_model_param_.Initialized() || mparam_.base_score != mparam_backup.base_score) {
-      learner_model_param_ = LearnerModelParam(mparam_,
-                                               obj_->ProbToMargin(mparam_.base_score));
+      learner_model_param_ =
+          LearnerModelParam(mparam_, obj_->ProbToMargin(mparam_.base_score), task);
     }
 
     this->ConfigureGBM(old_tparam, args);
     generic_parameters_.ConfigureGpuId(this->gbm_->UseGPU());
-
     this->ConfigureMetrics(args);
 
     this->need_configuration_ = false;
@@ -375,6 +419,7 @@ class LearnerConfiguration : public Learner {
       obj_.reset(ObjFunction::Create(tparam_.objective, &generic_parameters_));
     }
     obj_->LoadConfig(objective_fn);
+    learner_model_param_.task = obj_->Task();
 
     tparam_.booster = get<String>(gradient_booster["name"]);
     if (!gbm_) {
@@ -388,9 +433,17 @@ class LearnerConfiguration : public Learner {
     metric_names_.resize(n_metrics);
     metrics_.resize(n_metrics);
     for (size_t i = 0; i < n_metrics; ++i) {
-      metric_names_[i]= get<String>(j_metrics[i]);
-      metrics_[i] = std::unique_ptr<Metric>(
-          Metric::Create(metric_names_[i], &generic_parameters_));
+      auto old_serialization = IsA<String>(j_metrics[i]);
+      if (old_serialization) {
+        LOG(WARNING) << ModelMsg();
+        metric_names_[i] = get<String>(j_metrics[i]);
+      } else {
+        metric_names_[i] = get<String>(j_metrics[i]["name"]);
+      }
+      metrics_[i] = std::unique_ptr<Metric>(Metric::Create(metric_names_[i], &generic_parameters_));
+      if (!old_serialization) {
+        metrics_[i]->LoadConfig(j_metrics[i]);
+      }
     }
 
     FromJson(learner_parameters.at("generic_param"), &generic_parameters_);
@@ -418,9 +471,9 @@ class LearnerConfiguration : public Learner {
     auto& objective_fn = learner_parameters["objective"];
     obj_->SaveConfig(&objective_fn);
 
-    std::vector<Json> metrics(metrics_.size());
+    std::vector<Json> metrics(metrics_.size(), Json{Object{}});
     for (size_t i = 0; i < metrics_.size(); ++i) {
-      metrics[i] = String(metrics_[i]->Name());
+      metrics_[i]->SaveConfig(&metrics[i]);
     }
     learner_parameters["metrics"] = Array(std::move(metrics));
 
@@ -497,9 +550,7 @@ class LearnerConfiguration : public Learner {
     return cfg_;
   }
 
-  GenericParameter const& GetGenericParameter() const override {
-    return generic_parameters_;
-  }
+  GenericParameter const* Ctx() const override { return &generic_parameters_; }
 
  private:
   void ValidateParameters() {
@@ -587,8 +638,7 @@ class LearnerConfiguration : public Learner {
         CHECK(matrix.first);
         CHECK(!matrix.second.ref.expired());
         const uint64_t num_col = matrix.first->Info().num_col_;
-        CHECK_LE(num_col,
-                 static_cast<uint64_t>(std::numeric_limits<unsigned>::max()))
+        CHECK_LE(num_col, static_cast<uint64_t>(std::numeric_limits<unsigned>::max()))
             << "Unfortunately, XGBoost does not support data matrices with "
             << std::numeric_limits<unsigned>::max() << " features or greater";
         num_feature = std::max(num_feature, static_cast<uint32_t>(num_col));
@@ -653,6 +703,31 @@ class LearnerConfiguration : public Learner {
       p_metric->Configure(args);
     }
   }
+
+  /**
+   * Get number of targets from objective function.
+   */
+  ObjInfo ConfigureTargets() {
+    CHECK(this->obj_);
+    auto const& cache = this->GetPredictionCache()->Container();
+    size_t n_targets = 1;
+    for (auto const& d : cache) {
+      if (n_targets == 1) {
+        n_targets = this->obj_->Targets(d.first->Info());
+      } else {
+        auto t = this->obj_->Targets(d.first->Info());
+        CHECK(n_targets == t || 1 == t) << "Inconsistent labels.";
+      }
+    }
+    if (mparam_.num_target != 1) {
+      CHECK(n_targets == 1 || n_targets == mparam_.num_target)
+          << "Inconsistent configuration of num_target.  Configuration result from input data:"
+          << n_targets << ", configuration from parameter:" << mparam_.num_target;
+    } else {
+      mparam_.num_target = n_targets;
+    }
+    return this->obj_->Task();
+  }
 };
 
 std::string const LearnerConfiguration::kEvalMetric {"eval_metric"};  // NOLINT
@@ -665,12 +740,17 @@ class LearnerIO : public LearnerConfiguration {
   std::string const serialisation_header_ { u8"CONFIG-offset:" };
 
  public:
-  explicit LearnerIO(std::vector<std::shared_ptr<DMatrix> > cache) :
-      LearnerConfiguration{cache} {}
+  explicit LearnerIO(std::vector<std::shared_ptr<DMatrix>> cache) : LearnerConfiguration{cache} {}
 
   void LoadModel(Json const& in) override {
     CHECK(IsA<Object>(in));
-    Version::Load(in);
+    auto version = Version::Load(in);
+    if (std::get<0>(version) == 1 && std::get<1>(version) < 6) {
+      LOG(WARNING)
+          << "Found JSON model saved before XGBoost 1.6, please save the model using current "
+             "version again. The support for old JSON model will be discontinued in XGBoost 2.3.";
+    }
+
     auto const& learner = get<Object>(in["learner"]);
     mparam_.FromJson(learner.at("learner_model_param"));
 
@@ -684,8 +764,8 @@ class LearnerIO : public LearnerConfiguration {
     auto const& gradient_booster = learner.at("gradient_booster");
     name = get<String>(gradient_booster["name"]);
     tparam_.UpdateAllowUnknown(Args{{"booster", name}});
-    gbm_.reset(GradientBooster::Create(tparam_.booster,
-                                       &generic_parameters_, &learner_model_param_));
+    gbm_.reset(
+        GradientBooster::Create(tparam_.booster, &generic_parameters_, &learner_model_param_));
     gbm_->LoadModel(gradient_booster);
 
     auto const& j_attributes = get<Object const>(learner.at("attributes"));
@@ -697,20 +777,17 @@ class LearnerIO : public LearnerConfiguration {
     // feature names and types are saved in xgboost 1.4
     auto it = learner.find("feature_names");
     if (it != learner.cend()) {
-      auto const &feature_names = get<Array const>(it->second);
-      feature_names_.clear();
-      for (auto const &name : feature_names) {
-        feature_names_.emplace_back(get<String const>(name));
-      }
+      auto const& feature_names = get<Array const>(it->second);
+      feature_names_.resize(feature_names.size());
+      std::transform(feature_names.cbegin(), feature_names.cend(), feature_names_.begin(),
+                     [](Json const& fn) { return get<String const>(fn); });
     }
     it = learner.find("feature_types");
     if (it != learner.cend()) {
-      auto const &feature_types = get<Array const>(it->second);
-      feature_types_.clear();
-      for (auto const &name : feature_types) {
-        auto type = get<String const>(name);
-        feature_types_.emplace_back(type);
-      }
+      auto const& feature_types = get<Array const>(it->second);
+      feature_types_.resize(feature_types.size());
+      std::transform(feature_types.cbegin(), feature_types.cend(), feature_types_.begin(),
+                     [](Json const& fn) { return get<String const>(fn); });
     }
 
     this->need_configuration_ = true;
@@ -750,6 +827,7 @@ class LearnerIO : public LearnerConfiguration {
       feature_types.emplace_back(type);
     }
   }
+
   // About to be deprecated by JSON format
   void LoadModel(dmlc::Stream* fi) override {
     generic_parameters_.UpdateAllowUnknown(Args{});
@@ -768,15 +846,20 @@ class LearnerIO : public LearnerConfiguration {
       }
     }
 
-    if (header[0] == '{') {
-      // Dispatch to JSON
-      auto json_stream = common::FixedSizeStream(&fp);
-      std::string buffer;
-      json_stream.Take(&buffer);
-      auto model = Json::Load({buffer.c_str(), buffer.size()});
+    if (header[0] == '{') {  // Dispatch to JSON
+      auto buffer = common::ReadAll(fi, &fp);
+      Json model;
+      if (header[1] == '"') {
+        model = Json::Load(StringView{buffer});
+      } else if (std::isalpha(header[1])) {
+        model = Json::Load(StringView{buffer}, std::ios::binary);
+      } else {
+        LOG(FATAL) << "Invalid model format";
+      }
       this->LoadModel(model);
       return;
     }
+
     // use the peekable reader.
     fi = &fp;
     // read parameter
@@ -784,6 +867,9 @@ class LearnerIO : public LearnerConfiguration {
         << "BoostLearner: wrong model format";
     if (!DMLC_IO_NO_ENDIAN_SWAP) {
       mparam_ = mparam_.ByteSwap();
+    }
+    if (mparam_.num_target == 0) {
+      mparam_.num_target = 1;
     }
     CHECK(fi->Read(&tparam_.objective)) << "BoostLearner: wrong model format";
     CHECK(fi->Read(&tparam_.booster)) << "BoostLearner: wrong model format";
@@ -832,7 +918,7 @@ class LearnerIO : public LearnerConfiguration {
     }
 
     learner_model_param_ =
-        LearnerModelParam(mparam_, obj_->ProbToMargin(mparam_.base_score));
+        LearnerModelParam(mparam_, obj_->ProbToMargin(mparam_.base_score), obj_->Task());
     if (attributes_.find("objective") != attributes_.cend()) {
       auto obj_str = attributes_.at("objective");
       auto j_obj = Json::Load({obj_str.c_str(), obj_str.size()});
@@ -931,45 +1017,46 @@ class LearnerIO : public LearnerConfiguration {
   void Save(dmlc::Stream* fo) const override {
     Json memory_snapshot{Object()};
     memory_snapshot["Model"] = Object();
-    auto &model = memory_snapshot["Model"];
+    auto& model = memory_snapshot["Model"];
     this->SaveModel(&model);
     memory_snapshot["Config"] = Object();
-    auto &config = memory_snapshot["Config"];
+    auto& config = memory_snapshot["Config"];
     this->SaveConfig(&config);
-    std::string out_str;
-    Json::Dump(memory_snapshot, &out_str);
-    fo->Write(out_str.c_str(), out_str.size());
+
+    std::vector<char> stream;
+    Json::Dump(memory_snapshot, &stream, std::ios::binary);
+    fo->Write(stream.data(), stream.size());
   }
 
   void Load(dmlc::Stream* fi) override {
     common::PeekableInStream fp(fi);
-    char c {0};
-    fp.PeekRead(&c, 1);
-    if (c == '{') {
-      std::string buffer;
-      common::FixedSizeStream{&fp}.Take(&buffer);
-      auto memory_snapshot = Json::Load({buffer.c_str(), buffer.size()});
-      this->LoadModel(memory_snapshot["Model"]);
-      this->LoadConfig(memory_snapshot["Config"]);
+    char header[2];
+    fp.PeekRead(header, 2);
+    if (header[0] == '{') {
+      auto buffer = common::ReadAll(fi, &fp);
+      Json memory_snapshot;
+      if (header[1] == '"') {
+        memory_snapshot = Json::Load(StringView{buffer});
+        LOG(WARNING) << ModelMsg();
+      } else if (std::isalpha(header[1])) {
+        memory_snapshot = Json::Load(StringView{buffer}, std::ios::binary);
+      } else {
+        LOG(FATAL) << "Invalid serialization file.";
+      }
+      if (IsA<Null>(memory_snapshot["Model"])) {
+        // R has xgb.load that doesn't distinguish whether configuration is saved.
+        // We should migrate to use `xgb.load.raw` instead.
+        this->LoadModel(memory_snapshot);
+      } else {
+        this->LoadModel(memory_snapshot["Model"]);
+        this->LoadConfig(memory_snapshot["Config"]);
+      }
     } else {
       std::string header;
       header.resize(serialisation_header_.size());
       CHECK_EQ(fp.Read(&header[0], header.size()), serialisation_header_.size());
       // Avoid printing the content in loaded header, which might be random binary code.
-      CHECK(header == serialisation_header_)  // NOLINT
-          << R"doc(
-
-  If you are loading a serialized model (like pickle in Python) generated by older
-  XGBoost, please export the model by calling `Booster.save_model` from that version
-  first, then load it back in current version.  There's a simple script for helping
-  the process. See:
-
-    https://xgboost.readthedocs.io/en/latest/tutorials/saving_model.html
-
-  for reference to the script, and more details about differences between saving model and
-  serializing.
-
-)doc";
+      CHECK(header == serialisation_header_) << ModelMsg();
       int64_t sz {-1};
       CHECK_EQ(fp.Read(&sz, sizeof(sz)), sizeof(sz));
       if (!DMLC_IO_NO_ENDIAN_SWAP) {
@@ -1062,9 +1149,10 @@ class LearnerImpl : public LearnerIO {
     monitor_.Start("UpdateOneIter");
     TrainingObserver::Instance().Update(iter);
     this->Configure();
-    if (generic_parameters_.seed_per_iteration || rabit::IsDistributed()) {
+    if (generic_parameters_.seed_per_iteration) {
       common::GlobalRandom().seed(generic_parameters_.seed * kRandSeedMagic + iter);
     }
+
     this->CheckDataSplitMode();
     this->ValidateDMatrix(train.get(), true);
 
@@ -1089,9 +1177,10 @@ class LearnerImpl : public LearnerIO {
                     HostDeviceVector<GradientPair>* in_gpair) override {
     monitor_.Start("BoostOneIter");
     this->Configure();
-    if (generic_parameters_.seed_per_iteration || rabit::IsDistributed()) {
+    if (generic_parameters_.seed_per_iteration) {
       common::GlobalRandom().seed(generic_parameters_.seed * kRandSeedMagic + iter);
     }
+
     this->CheckDataSplitMode();
     this->ValidateDMatrix(train.get(), true);
     auto local_cache = this->GetPredictionCache();
@@ -1108,6 +1197,7 @@ class LearnerImpl : public LearnerIO {
     this->Configure();
 
     std::ostringstream os;
+    os.precision(std::numeric_limits<double>::max_digits10);
     os << '[' << iter << ']' << std::setiosflags(std::ios::fixed);
     if (metrics_.size() == 0 && tparam_.disable_default_eval_metric <= 0) {
       auto warn_default_eval_metric = [](const std::string& objective, const std::string& before,
@@ -1117,12 +1207,8 @@ class LearnerImpl : public LearnerIO {
                      << before << "' to '" << after << "'. Explicitly set eval_metric if you'd "
                      << "like to restore the old behavior.";
       };
-      if (tparam_.objective == "binary:logistic") {
-        warn_default_eval_metric(tparam_.objective, "error", "logloss", "1.3.0");
-      } else if (tparam_.objective == "binary:logitraw") {
+      if (tparam_.objective == "binary:logitraw") {
         warn_default_eval_metric(tparam_.objective, "auc", "logloss", "1.4.0");
-      } else if ((tparam_.objective == "multi:softmax" || tparam_.objective == "multi:softprob")) {
-        warn_default_eval_metric(tparam_.objective, "merror", "mlogloss", "1.3.0");
       }
       metrics_.emplace_back(Metric::Create(obj_->DefaultEvalMetric(), &generic_parameters_));
       metrics_.back()->Configure({cfg_.begin(), cfg_.end()});

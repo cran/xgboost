@@ -31,7 +31,7 @@ struct GBTreeModelParam : public dmlc::Parameter<GBTreeModelParam> {
   /*! \brief number of trees */
   int32_t num_trees;
   /*! \brief (Deprecated) number of roots */
-  int32_t deprecated_num_roots;
+  int32_t num_parallel_tree;
   /*! \brief number of features to be used by trees */
   int32_t deprecated_num_feature;
   /*! \brief pad this space, for backward compatibility reason.*/
@@ -50,7 +50,7 @@ struct GBTreeModelParam : public dmlc::Parameter<GBTreeModelParam> {
     std::memset(this, 0, sizeof(GBTreeModelParam));  // FIXME(trivialfis): Why?
     static_assert(sizeof(GBTreeModelParam) == (4 + 2 + 2 + 32) * sizeof(int32_t),
                   "64/32 bit compatibility issue");
-    deprecated_num_roots = 1;
+    num_parallel_tree = 1;
   }
 
   // declare parameters, only declare those that need to be set.
@@ -59,6 +59,12 @@ struct GBTreeModelParam : public dmlc::Parameter<GBTreeModelParam> {
         .set_lower_bound(0)
         .set_default(0)
         .describe("Number of features used for training and prediction.");
+    DMLC_DECLARE_FIELD(num_parallel_tree)
+        .set_default(1)
+        .set_lower_bound(1)
+        .describe(
+            "Number of parallel trees constructed during each iteration."
+            " This option is used to support boosted random forest.");
     DMLC_DECLARE_FIELD(size_leaf_vector)
         .set_lower_bound(0)
         .set_default(0)
@@ -70,7 +76,7 @@ struct GBTreeModelParam : public dmlc::Parameter<GBTreeModelParam> {
   inline GBTreeModelParam ByteSwap() const {
     GBTreeModelParam x = *this;
     dmlc::ByteSwap(&x.num_trees, sizeof(x.num_trees), 1);
-    dmlc::ByteSwap(&x.deprecated_num_roots, sizeof(x.deprecated_num_roots), 1);
+    dmlc::ByteSwap(&x.num_parallel_tree, sizeof(x.num_parallel_tree), 1);
     dmlc::ByteSwap(&x.deprecated_num_feature, sizeof(x.deprecated_num_feature), 1);
     dmlc::ByteSwap(&x.pad_32bit, sizeof(x.pad_32bit), 1);
     dmlc::ByteSwap(&x.deprecated_num_pbuffer, sizeof(x.deprecated_num_pbuffer), 1);
@@ -83,8 +89,8 @@ struct GBTreeModelParam : public dmlc::Parameter<GBTreeModelParam> {
 
 struct GBTreeModel : public Model {
  public:
-  explicit GBTreeModel(LearnerModelParam const* learner_model) :
-      learner_model_param{learner_model} {}
+  explicit GBTreeModel(LearnerModelParam const* learner_model, GenericParameter const* ctx)
+      : learner_model_param{learner_model}, ctx_{ctx} {}
   void Configure(const Args& cfg) {
     // initialize model parameters if not yet been initialized.
     if (trees.size() == 0) {
@@ -109,12 +115,11 @@ struct GBTreeModel : public Model {
   void SaveModel(Json* p_out) const override;
   void LoadModel(Json const& p_out) override;
 
-  std::vector<std::string> DumpModel(const FeatureMap &fmap, bool with_stats,
+  std::vector<std::string> DumpModel(const FeatureMap& fmap, bool with_stats, int32_t n_threads,
                                      std::string format) const {
     std::vector<std::string> dump(trees.size());
-    common::ParallelFor(static_cast<omp_ulong>(trees.size()), [&](size_t i) {
-      dump[i] = trees[i]->DumpModel(fmap, with_stats, format);
-    });
+    common::ParallelFor(trees.size(), n_threads,
+                        [&](size_t i) { dump[i] = trees[i]->DumpModel(fmap, with_stats, format); });
     return dump;
   }
   void CommitModel(std::vector<std::unique_ptr<RegTree> >&& new_trees,
@@ -136,6 +141,9 @@ struct GBTreeModel : public Model {
   std::vector<std::unique_ptr<RegTree> > trees_to_update;
   /*! \brief some information indicator of the tree, reserved */
   std::vector<int> tree_info;
+
+ private:
+  GenericParameter const* ctx_;
 };
 }  // namespace gbm
 }  // namespace xgboost
