@@ -199,8 +199,8 @@ JsonObject::JsonObject(JsonObject&& that) noexcept : Value(ValueKind::kObject) {
   std::swap(that.object_, this->object_);
 }
 
-JsonObject::JsonObject(std::map<std::string, Json>&& object) noexcept
-    : Value(ValueKind::kObject), object_{std::forward<std::map<std::string, Json>>(object)} {}
+JsonObject::JsonObject(Map&& object) noexcept
+    : Value(ValueKind::kObject), object_{std::forward<Map>(object)} {}
 
 bool JsonObject::operator==(Value const& rhs) const {
   if (!IsA<JsonObject>(&rhs)) {
@@ -246,7 +246,7 @@ std::enable_if_t<std::is_floating_point<T>::value, bool> IsInfMSVCWar(T v) {
   return std::isinf(v);
 }
 template <typename T>
-std::enable_if_t<std::is_integral<T>::value, bool> IsInfMSVCWar(T v) {
+std::enable_if_t<std::is_integral<T>::value, bool> IsInfMSVCWar(T) {
   return false;
 }
 }  // namespace
@@ -502,7 +502,7 @@ Json JsonReader::ParseArray() {
 Json JsonReader::ParseObject() {
   GetConsecutiveChar('{');
 
-  std::map<std::string, Json> data;
+  Object::Map data;
   SkipSpaces();
   char ch = PeekNextChar();
 
@@ -777,7 +777,7 @@ std::string UBJReader::DecodeStr() {
 
 Json UBJReader::ParseObject() {
   auto marker = PeekNextChar();
-  std::map<std::string, Json> results;
+  Object::Map results;
 
   while (marker != '}') {
     auto str = this->DecodeStr();
@@ -850,9 +850,11 @@ Json UBJReader::Parse() {
       }
       case 'D': {
         LOG(FATAL) << "f64 is not supported.";
+        break;
       }
       case 'H': {
         LOG(FATAL) << "High precision number is not supported.";
+        break;
       }
       default:
         Error("Unknown construct");
@@ -923,7 +925,7 @@ void WriteTypedArray(JsonTypedArray<T, kind> const* arr, std::vector<char>* stre
   auto s = stream->size();
   stream->resize(s + arr->Size() * sizeof(T));
   auto const& vec = arr->GetArray();
-  for (size_t i = 0; i < n; ++i) {
+  for (int64_t i = 0; i < n; ++i) {
     auto v = ToBigEndian(vec[i]);
     std::memcpy(stream->data() + s, &v, sizeof(v));
     s += sizeof(v);
@@ -968,7 +970,7 @@ void UBJWriter::Visit(JsonInteger const* num) {
   }
 }
 
-void UBJWriter::Visit(JsonNull const* null) { stream_->push_back('Z'); }
+void UBJWriter::Visit(JsonNull const*) { stream_->push_back('Z'); }
 
 void UBJWriter::Visit(JsonString const* str) {
   stream_->push_back('S');

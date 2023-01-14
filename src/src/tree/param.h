@@ -40,6 +40,8 @@ struct TrainParam : public XGBoostParameter<TrainParam> {
 
   uint32_t max_cat_to_onehot{4};
 
+  bst_bin_t max_cat_threshold{64};
+
   //----- the rest parameters are less important ----
   // minimum amount of hessian(weight) allowed in a child
   float min_child_weight;
@@ -63,8 +65,6 @@ struct TrainParam : public XGBoostParameter<TrainParam> {
   // whether to subsample columns during tree construction
   float colsample_bytree;
   // accuracy of sketch
-  float sketch_eps;
-  // accuracy of sketch
   float sketch_ratio;
   // option to open cacheline optimization
   bool cache_opt;
@@ -78,7 +78,9 @@ struct TrainParam : public XGBoostParameter<TrainParam> {
   // ------ From CPU quantile histogram -------.
   // percentage threshold for treating a feature as sparse
   // e.g. 0.2 indicates a feature with fewer than 20% nonzeros is considered sparse
-  double sparse_threshold;
+  static constexpr double DftSparseThreshold() { return 0.2; }
+
+  double sparse_threshold{DftSparseThreshold()};
 
   // declare the parameters
   DMLC_DECLARE_PARAMETER(TrainParam) {
@@ -113,6 +115,12 @@ struct TrainParam : public XGBoostParameter<TrainParam> {
         .set_default(4)
         .set_lower_bound(1)
         .describe("Maximum number of categories to use one-hot encoding based split.");
+    DMLC_DECLARE_FIELD(max_cat_threshold)
+        .set_default(64)
+        .set_lower_bound(1)
+        .describe(
+            "Maximum number of categories considered for split. Used only by partition-based"
+            "splits.");
     DMLC_DECLARE_FIELD(min_child_weight)
         .set_lower_bound(0.0f)
         .set_default(1.0f)
@@ -154,10 +162,6 @@ struct TrainParam : public XGBoostParameter<TrainParam> {
         .set_range(0.0f, 1.0f)
         .set_default(1.0f)
         .describe("Subsample ratio of columns, resample on each tree construction.");
-    DMLC_DECLARE_FIELD(sketch_eps)
-        .set_range(0.0f, 1.0f)
-        .set_default(0.03f)
-        .describe("EXP Param: Sketch accuracy of approximate algorithm.");
     DMLC_DECLARE_FIELD(sketch_ratio)
         .set_lower_bound(0.0f)
         .set_default(2.0f)
@@ -180,7 +184,9 @@ struct TrainParam : public XGBoostParameter<TrainParam> {
                   "See tutorial for more information");
 
     // ------ From cpu quantile histogram -------.
-    DMLC_DECLARE_FIELD(sparse_threshold).set_range(0, 1.0).set_default(0.2)
+    DMLC_DECLARE_FIELD(sparse_threshold)
+        .set_range(0, 1.0)
+        .set_default(DftSparseThreshold())
         .describe("percentage threshold for treating a feature as sparse");
 
     // add alias of parameters
@@ -195,12 +201,6 @@ struct TrainParam : public XGBoostParameter<TrainParam> {
     return loss_chg < this->min_split_loss ||
            (this->max_depth != 0 && depth > this->max_depth);
   }
-  /*! \brief maximum sketch size */
-  inline unsigned MaxSketchSize() const {
-    auto ret = static_cast<unsigned>(sketch_ratio / sketch_eps);
-    CHECK_GT(ret, 0U);
-    return ret;
-  }
 
   bst_node_t MaxNodes() const {
     if (this->max_depth == 0 && this->max_leaves == 0) {
@@ -211,12 +211,13 @@ struct TrainParam : public XGBoostParameter<TrainParam> {
       n_nodes = this->max_leaves * 2 - 1;
     } else {
       // bst_node_t will overflow.
-      CHECK_LE(this->max_depth, 31)
-          << "max_depth can not be greater than 31 as that might generate 2 ** "
-             "32 - 1 nodes.";
-      n_nodes = (1 << (this->max_depth + 1)) - 1;
+      CHECK_LE(this->max_depth, 30)
+          << "max_depth can not be greater than 30 as that might generate 2^31 - 1"
+             "nodes.";
+      // same as: (1 << (max_depth + 1)) - 1, but avoids 1 << 31, which overflows.
+      n_nodes = (1 << this->max_depth) + ((1 << this->max_depth) - 1);
     }
-    CHECK_NE(n_nodes, 0);
+    CHECK_GT(n_nodes, 0);
     return n_nodes;
   }
 };
@@ -259,7 +260,7 @@ XGBOOST_DEVICE inline T CalcWeight(const TrainingParams &p, T sum_grad,
 // calculate the cost of loss function
 template <typename TrainingParams, typename T>
 XGBOOST_DEVICE inline T CalcGain(const TrainingParams &p, T sum_grad, T sum_hess) {
-  if (sum_hess < p.min_child_weight) {
+  if (sum_hess < p.min_child_weight || sum_hess <= 0.0) {
     return T(0.0);
   }
   if (p.max_delta_step == 0.0f) {
@@ -367,12 +368,14 @@ struct SplitEntryContainer {
 
   SplitEntryContainer() = default;
 
-  friend std::ostream& operator<<(std::ostream& os, SplitEntryContainer const& s) {
-    os << "loss_chg: " << s.loss_chg << ", "
-       << "split index: " << s.SplitIndex() << ", "
-       << "split value: " << s.split_value << ", "
-       << "left_sum: " << s.left_sum << ", "
-       << "right_sum: " << s.right_sum;
+  friend std::ostream &operator<<(std::ostream &os, SplitEntryContainer const &s) {
+    os << "loss_chg: " << s.loss_chg << "\n"
+       << "dft_left: " << s.DefaultLeft() << "\n"
+       << "split_index: " << s.SplitIndex() << "\n"
+       << "split_value: " << s.split_value << "\n"
+       << "is_cat: " << s.is_cat << "\n"
+       << "left_sum: " << s.left_sum << "\n"
+       << "right_sum: " << s.right_sum << std::endl;
     return os;
   }
   /*!\return feature index to split on */
@@ -438,30 +441,6 @@ struct SplitEntryContainer {
       this->sindex = split_index;
       this->split_value = new_split_value;
       this->is_cat = is_cat;
-      this->left_sum = left_sum;
-      this->right_sum = right_sum;
-      return true;
-    } else {
-      return false;
-    }
-  }
-
-  /*!
-   * \brief Update with partition based categorical split.
-   *
-   * \return Whether the proposed split is better and can replace current split.
-   */
-  bool Update(float new_loss_chg, bst_feature_t split_index, common::KCatBitField cats,
-              bool default_left, GradientT const &left_sum, GradientT const &right_sum) {
-    if (this->NeedReplace(new_loss_chg, split_index)) {
-      this->loss_chg = new_loss_chg;
-      if (default_left) {
-        split_index |= (1U << 31);
-      }
-      this->sindex = split_index;
-      cat_bits.resize(cats.Bits().size());
-      std::copy(cats.Bits().begin(), cats.Bits().end(), cat_bits.begin());
-      this->is_cat = true;
       this->left_sum = left_sum;
       this->right_sum = right_sum;
       return true;

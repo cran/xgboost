@@ -24,14 +24,10 @@ class HingeObj : public ObjFunction {
  public:
   HingeObj() = default;
 
-  void Configure(
-      const std::vector<std::pair<std::string, std::string> > &args) override {}
+  void Configure(Args const&) override {}
+  ObjInfo Task() const override { return ObjInfo::kRegression; }
 
-  ObjInfo Task() const override { return {ObjInfo::kRegression, false}; }
-
-  void GetGradient(const HostDeviceVector<bst_float> &preds,
-                   const MetaInfo &info,
-                   int iter,
+  void GetGradient(const HostDeviceVector<bst_float> &preds, const MetaInfo &info, int /*iter*/,
                    HostDeviceVector<GradientPair> *out_gpair) override {
     CHECK_NE(info.labels.Size(), 0U) << "label set cannot be empty";
     CHECK_EQ(preds.Size(), info.labels.Size())
@@ -88,7 +84,7 @@ class HingeObj : public ObjFunction {
     auto& out = *p_out;
     out["name"] = String("binary:hinge");
   }
-  void LoadConfig(Json const& in) override {}
+  void LoadConfig(Json const &) override {}
 };
 
 // register the objective functions

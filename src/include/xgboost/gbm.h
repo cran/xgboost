@@ -68,21 +68,18 @@ class GradientBooster : public Model, public Configurable {
    * \param layer_end   End of booster layer. 0 means do not limit trees.
    * \param out         Output gradient booster
    */
-  virtual void Slice(int32_t layer_begin, int32_t layer_end, int32_t step,
-                     GradientBooster *out, bool* out_of_bound) const {
+  virtual void Slice(int32_t /*layer_begin*/, int32_t /*layer_end*/, int32_t /*step*/,
+                     GradientBooster* /*out*/, bool* /*out_of_bound*/) const {
     LOG(FATAL) << "Slice is not supported by current booster.";
-  }
-  /*!
-   * \brief whether the model allow lazy checkpoint
-   * return true if model is only updated in DoBoost
-   * after all Allreduce calls
-   */
-  virtual bool AllowLazyCheckPoint() const {
-    return false;
   }
   /*! \brief Return number of boosted rounds.
    */
   virtual int32_t BoostedRounds() const = 0;
+  /**
+   * \brief Whether the model has already been trained. When tree booster is chosen, then
+   *        returns true when there are existing trees.
+   */
+  virtual bool ModelFitted() const = 0;
   /*!
    * \brief perform update to the model(boosting)
    * \param p_fmat feature matrix that provide access to features
@@ -90,9 +87,8 @@ class GradientBooster : public Model, public Configurable {
    * \param prediction The output prediction cache entry that needs to be updated.
    * the booster may change content of gpair
    */
-  virtual void DoBoost(DMatrix* p_fmat,
-                       HostDeviceVector<GradientPair>* in_gpair,
-                       PredictionCacheEntry*) = 0;
+  virtual void DoBoost(DMatrix* p_fmat, HostDeviceVector<GradientPair>* in_gpair,
+                       PredictionCacheEntry*, ObjFunction const* obj) = 0;
 
   /*!
    * \brief generate predictions for given feature matrix
@@ -112,15 +108,14 @@ class GradientBooster : public Model, public Configurable {
   /*!
    * \brief Inplace prediction.
    *
-   * \param           x                      A type erased data adapter.
+   * \param           p_fmat                 A proxy DMatrix that contains the data and related
+   *                                         meta info.
    * \param           missing                Missing value in the data.
    * \param [in,out]  out_preds              The output preds.
    * \param           layer_begin (Optional) Beginning of boosted tree layer used for prediction.
    * \param           layer_end   (Optional) End of booster layer. 0 means do not limit trees.
    */
-  virtual void InplacePredict(dmlc::any const &, std::shared_ptr<DMatrix>, float,
-                              PredictionCacheEntry*,
-                              uint32_t,
+  virtual void InplacePredict(std::shared_ptr<DMatrix>, float, PredictionCacheEntry*, uint32_t,
                               uint32_t) const {
     LOG(FATAL) << "Inplace predict is not supported by current booster.";
   }

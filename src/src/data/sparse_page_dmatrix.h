@@ -114,21 +114,21 @@ class SparsePageDMatrix : public DMatrix {
   BatchSet<SortedCSCPage> GetSortedColumnBatches() override;
   BatchSet<EllpackPage> GetEllpackBatches(const BatchParam& param) override;
   BatchSet<GHistIndexMatrix> GetGradientIndex(const BatchParam&) override;
+  BatchSet<ExtSparsePage> GetExtBatches(BatchParam const &) override {
+    LOG(FATAL) << "Can not obtain a single CSR page for external memory DMatrix";
+    return BatchSet<ExtSparsePage>(BatchIterator<ExtSparsePage>(nullptr));
+  }
 
   // source data pointers.
   std::shared_ptr<SparsePageSource> sparse_page_source_;
   std::shared_ptr<EllpackPageSource> ellpack_page_source_;
   std::shared_ptr<CSCPageSource> column_source_;
   std::shared_ptr<SortedCSCPageSource> sorted_column_source_;
-  std::shared_ptr<GHistIndexMatrix> ghist_index_page_;  // hist
   std::shared_ptr<GradientIndexPageSource> ghist_index_source_;
 
-  bool EllpackExists() const override {
-    return static_cast<bool>(ellpack_page_source_);
-  }
-  bool SparsePageExists() const override {
-    return static_cast<bool>(sparse_page_source_);
-  }
+  bool EllpackExists() const override { return static_cast<bool>(ellpack_page_source_); }
+  bool GHistIndexExists() const override { return static_cast<bool>(ghist_index_source_); }
+  bool SparsePageExists() const override { return static_cast<bool>(sparse_page_source_); }
 };
 
 inline std::string MakeId(std::string prefix, SparsePageDMatrix *ptr) {

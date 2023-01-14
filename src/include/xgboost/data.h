@@ -216,7 +216,7 @@ struct BatchParam {
   /*! \brief The GPU device to use. */
   int gpu_id {-1};
   /*! \brief Maximum number of bins per feature for histograms. */
-  int max_bin{0};
+  bst_bin_t max_bin{0};
   /*! \brief Hessian, used for sketching with future approx implementation. */
   common::Span<float> hess;
   /*! \brief Whether should DMatrix regenerate the batch.  Only used for GHistIndex. */
@@ -226,17 +226,17 @@ struct BatchParam {
 
   BatchParam() = default;
   // GPU Hist
-  BatchParam(int32_t device, int32_t max_bin)
+  BatchParam(int32_t device, bst_bin_t max_bin)
       : gpu_id{device}, max_bin{max_bin} {}
   // Hist
-  BatchParam(int32_t max_bin, double sparse_thresh)
+  BatchParam(bst_bin_t max_bin, double sparse_thresh)
       : max_bin{max_bin}, sparse_thresh{sparse_thresh} {}
   // Approx
   /**
    * \brief Get batch with sketch weighted by hessian.  The batch will be regenerated if
    *        the span is changed, so caller should keep the span for each iteration.
    */
-  BatchParam(int32_t max_bin, common::Span<float> hessian, bool regenerate)
+  BatchParam(bst_bin_t max_bin, common::Span<float> hessian, bool regenerate)
       : max_bin{max_bin}, hess{hessian}, regen{regenerate} {}
 
   bool operator!=(BatchParam const& other) const {
@@ -284,11 +284,16 @@ class SparsePage {
     return {offset.ConstHostSpan(), data.ConstHostSpan()};
   }
 
-
   /*! \brief constructor */
   SparsePage() {
     this->Clear();
   }
+
+  SparsePage(SparsePage const& that) = delete;
+  SparsePage(SparsePage&& that) = default;
+  SparsePage& operator=(SparsePage const& that) = delete;
+  SparsePage& operator=(SparsePage&& that) = default;
+  virtual ~SparsePage() = default;
 
   /*! \return Number of instances in the page. */
   inline size_t Size() const {
@@ -356,6 +361,16 @@ class CSCPage: public SparsePage {
  public:
   CSCPage() : SparsePage() {}
   explicit CSCPage(SparsePage page) : SparsePage(std::move(page)) {}
+};
+
+/**
+ * \brief Sparse page for exporting DMatrix. Same as SparsePage, just a different type to
+ *        prevent being used internally.
+ */
+class ExtSparsePage {
+ public:
+  std::shared_ptr<SparsePage const> page;
+  explicit ExtSparsePage(std::shared_ptr<SparsePage const> p) : page{std::move(p)} {}
 };
 
 class SortedCSCPage : public SparsePage {
@@ -559,6 +574,7 @@ class DMatrix {
    *
    * \param iter    External data iterator
    * \param proxy   A hanlde to ProxyDMatrix
+   * \param ref     Reference Quantile DMatrix.
    * \param reset   Callback for reset
    * \param next    Callback for next
    * \param missing Value that should be treated as missing.
@@ -567,13 +583,11 @@ class DMatrix {
    *
    * \return A created quantile based DMatrix.
    */
-  template <typename DataIterHandle, typename DMatrixHandle,
-            typename DataIterResetCallback, typename XGDMatrixCallbackNext>
-  static DMatrix *Create(DataIterHandle iter, DMatrixHandle proxy,
-                         DataIterResetCallback *reset,
-                         XGDMatrixCallbackNext *next, float missing,
-                         int nthread,
-                         int max_bin);
+  template <typename DataIterHandle, typename DMatrixHandle, typename DataIterResetCallback,
+            typename XGDMatrixCallbackNext>
+  static DMatrix* Create(DataIterHandle iter, DMatrixHandle proxy, std::shared_ptr<DMatrix> ref,
+                         DataIterResetCallback* reset, XGDMatrixCallbackNext* next, float missing,
+                         int nthread, bst_bin_t max_bin);
 
   /**
    * \brief Create an external memory DMatrix with callbacks.
@@ -611,8 +625,10 @@ class DMatrix {
   virtual BatchSet<SortedCSCPage> GetSortedColumnBatches() = 0;
   virtual BatchSet<EllpackPage> GetEllpackBatches(const BatchParam& param) = 0;
   virtual BatchSet<GHistIndexMatrix> GetGradientIndex(const BatchParam& param) = 0;
+  virtual BatchSet<ExtSparsePage> GetExtBatches(BatchParam const& param) = 0;
 
   virtual bool EllpackExists() const = 0;
+  virtual bool GHistIndexExists() const = 0;
   virtual bool SparsePageExists() const = 0;
 };
 
@@ -621,9 +637,14 @@ inline BatchSet<SparsePage> DMatrix::GetBatches() {
   return GetRowBatches();
 }
 
-template<>
+template <>
 inline bool DMatrix::PageExists<EllpackPage>() const {
   return this->EllpackExists();
+}
+
+template <>
+inline bool DMatrix::PageExists<GHistIndexMatrix>() const {
+  return this->GHistIndexExists();
 }
 
 template<>
@@ -646,9 +667,14 @@ inline BatchSet<EllpackPage> DMatrix::GetBatches(const BatchParam& param) {
   return GetEllpackBatches(param);
 }
 
-template<>
+template <>
 inline BatchSet<GHistIndexMatrix> DMatrix::GetBatches(const BatchParam& param) {
   return GetGradientIndex(param);
+}
+
+template <>
+inline BatchSet<ExtSparsePage> DMatrix::GetBatches() {
+  return GetExtBatches(BatchParam{});
 }
 }  // namespace xgboost
 

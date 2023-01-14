@@ -1,5 +1,5 @@
 /*!
- * Copyright 2014-2019 by Contributors
+ * Copyright 2014-2022 by Contributors
  * \file objective.h
  * \brief interface of objective function used by xgboost.
  * \author Tianqi Chen, Kailong Chen
@@ -22,10 +22,15 @@
 
 namespace xgboost {
 
+class RegTree;
+
 /*! \brief interface of objective function */
 class ObjFunction : public Configurable {
  protected:
-  GenericParameter const* ctx_;
+  Context const* ctx_;
+
+ public:
+  static constexpr float DefaultBaseScore() { return 0.5f; }
 
  public:
   /*! \brief virtual destructor */
@@ -73,6 +78,13 @@ class ObjFunction : public Configurable {
   virtual bst_float ProbToMargin(bst_float base_score) const {
     return base_score;
   }
+  /**
+   * \brief Make initialize estimation of prediction.
+   *
+   * \param info MetaInfo that contains label.
+   * \param base_score Output estimation.
+   */
+  virtual void InitEstimation(MetaInfo const& info, linalg::Tensor<float, 1>* base_score) const;
   /*!
    * \brief Return task of this objective.
    */
@@ -87,6 +99,24 @@ class ObjFunction : public Configurable {
     }
     return 1;
   }
+
+  /**
+   * \brief Update the leaf values after a tree is built. Needed for objectives with 0
+   *        hessian.
+   *
+   *   Note that the leaf update is not well defined for distributed training as XGBoost
+   *   computes only an average of quantile between workers. This breaks when some leaf
+   *   have no sample assigned in a local worker.
+   *
+   * \param position The leaf index for each rows.
+   * \param info MetaInfo providing labels and weights.
+   * \param prediction Model prediction after transformation.
+   * \param p_tree Tree that needs to be updated.
+   */
+  virtual void UpdateTreeLeaf(HostDeviceVector<bst_node_t> const& /*position*/,
+                              MetaInfo const& /*info*/,
+                              HostDeviceVector<float> const& /*prediction*/,
+                              RegTree* /*p_tree*/) const {}
 
   /*!
    * \brief Create an objective function according to name.

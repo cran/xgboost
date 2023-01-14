@@ -20,17 +20,17 @@
 //   corresponding headers that brings in those function declaration can't be included with CUDA).
 //   This precludes the CPU and GPU logic to coexist inside a .cu file
 
-#include <rabit/rabit.h>
-#include <xgboost/metric.h>
 #include <dmlc/registry.h>
-#include <cmath>
+#include <xgboost/metric.h>
 
+#include <cmath>
 #include <vector>
 
-#include "xgboost/host_device_vector.h"
+#include "../collective/communicator-inl.h"
 #include "../common/math.h"
 #include "../common/threading_utils.h"
 #include "metric_common.h"
+#include "xgboost/host_device_vector.h"
 
 namespace {
 
@@ -102,9 +102,8 @@ struct EvalAMS : public Metric {
     name_ = os.str();
   }
 
-  double Eval(const HostDeviceVector<bst_float> &preds, const MetaInfo &info,
-              bool distributed) override {
-    CHECK(!distributed) << "metric AMS do not support distributed evaluation";
+  double Eval(const HostDeviceVector<bst_float>& preds, const MetaInfo& info) override {
+    CHECK(!collective::IsDistributed()) << "metric AMS do not support distributed evaluation";
     using namespace std;  // NOLINT(*)
 
     const auto ndata = static_cast<bst_omp_uint>(info.labels.Size());
@@ -161,8 +160,7 @@ struct EvalRank : public Metric, public EvalRankConfig {
   std::unique_ptr<xgboost::Metric> rank_gpu_;
 
  public:
-  double Eval(const HostDeviceVector<bst_float> &preds, const MetaInfo &info,
-              bool distributed) override {
+  double Eval(const HostDeviceVector<bst_float>& preds, const MetaInfo& info) override {
     CHECK_EQ(preds.Size(), info.labels.Size())
         << "label size predict size not match";
 
@@ -185,7 +183,7 @@ struct EvalRank : public Metric, public EvalRankConfig {
         rank_gpu_.reset(GPUMetric::CreateGPUMetric(this->Name(), tparam_));
       }
       if (rank_gpu_) {
-        sum_metric = rank_gpu_->Eval(preds, info, distributed);
+        sum_metric = rank_gpu_->Eval(preds, info);
       }
     }
 
@@ -218,10 +216,10 @@ struct EvalRank : public Metric, public EvalRankConfig {
       exc.Rethrow();
     }
 
-    if (distributed) {
+    if (collective::IsDistributed()) {
       double dat[2]{sum_metric, static_cast<double>(ngroups)};
       // approximately estimate the metric using mean
-      rabit::Allreduce<rabit::op::Sum>(dat, 2);
+      collective::Allreduce<collective::Operation::kSum>(dat, 2);
       return dat[0] / dat[1];
     } else {
       return sum_metric / ngroups;
@@ -342,9 +340,8 @@ struct EvalMAP : public EvalRank {
 struct EvalCox : public Metric {
  public:
   EvalCox() = default;
-  double Eval(const HostDeviceVector<bst_float> &preds, const MetaInfo &info,
-              bool distributed) override {
-    CHECK(!distributed) << "Cox metric does not support distributed evaluation";
+  double Eval(const HostDeviceVector<bst_float>& preds, const MetaInfo& info) override {
+    CHECK(!collective::IsDistributed()) << "Cox metric does not support distributed evaluation";
     using namespace std;  // NOLINT(*)
 
     const auto ndata = static_cast<bst_omp_uint>(info.labels.Size());

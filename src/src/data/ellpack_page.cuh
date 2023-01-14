@@ -43,12 +43,18 @@ struct EllpackDeviceAccessor {
         base_rowid(base_rowid),
         n_rows(n_rows) ,gidx_iter(gidx_iter),
         feature_types{feature_types} {
-    cuts.cut_values_.SetDevice(device);
-    cuts.cut_ptrs_.SetDevice(device);
-    cuts.min_vals_.SetDevice(device);
-    gidx_fvalue_map = cuts.cut_values_.ConstDeviceSpan();
-    feature_segments = cuts.cut_ptrs_.ConstDeviceSpan();
-    min_fvalue = cuts.min_vals_.ConstDeviceSpan();
+    if (device == Context::kCpuId) {
+      gidx_fvalue_map = cuts.cut_values_.ConstHostSpan();
+      feature_segments = cuts.cut_ptrs_.ConstHostSpan();
+      min_fvalue = cuts.min_vals_.ConstHostSpan();
+    } else {
+      cuts.cut_values_.SetDevice(device);
+      cuts.cut_ptrs_.SetDevice(device);
+      cuts.min_vals_.SetDevice(device);
+      gidx_fvalue_map = cuts.cut_values_.ConstDeviceSpan();
+      feature_segments = cuts.cut_ptrs_.ConstDeviceSpan();
+      min_fvalue = cuts.min_vals_.ConstDeviceSpan();
+    }
   }
   // Get a matrix element, uses binary search for look up Return NaN if missing
   // Given a row index and a feature index, returns the corresponding cut value
@@ -116,6 +122,8 @@ struct EllpackDeviceAccessor {
 };
 
 
+class GHistIndexMatrix;
+
 class EllpackPageImpl {
  public:
   /*!
@@ -150,12 +158,15 @@ class EllpackPageImpl {
   explicit EllpackPageImpl(DMatrix* dmat, const BatchParam& parm);
 
   template <typename AdapterBatch>
-  explicit EllpackPageImpl(AdapterBatch batch, float missing, int device,
-                           bool is_dense, int nthread,
+  explicit EllpackPageImpl(AdapterBatch batch, float missing, int device, bool is_dense,
                            common::Span<size_t> row_counts_span,
-                           common::Span<FeatureType const> feature_types,
-                           size_t row_stride, size_t n_rows, size_t n_cols,
-                           common::HistogramCuts const &cuts);
+                           common::Span<FeatureType const> feature_types, size_t row_stride,
+                           size_t n_rows, common::HistogramCuts const& cuts);
+  /**
+   * \brief Constructor from an existing CPU gradient index.
+   */
+  explicit EllpackPageImpl(Context const* ctx, GHistIndexMatrix const& page,
+                           common::Span<FeatureType const> ft);
 
   /*! \brief Copy the elements of the given ELLPACK page into this page.
    *
@@ -197,6 +208,7 @@ class EllpackPageImpl {
   EllpackDeviceAccessor
   GetDeviceAccessor(int device,
                     common::Span<FeatureType const> feature_types = {}) const;
+  EllpackDeviceAccessor GetHostAccessor(common::Span<FeatureType const> feature_types = {}) const;
 
  private:
   /*!

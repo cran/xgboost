@@ -4,10 +4,10 @@
  * \brief Definition of single-value regression and classification objectives.
  * \author Tianqi Chen, Kailong Chen
  */
-
 #include <dmlc/omp.h>
 #include <xgboost/logging.h>
 #include <xgboost/objective.h>
+#include <xgboost/tree_model.h>
 
 #include <cmath>
 #include <memory>
@@ -15,29 +15,41 @@
 
 #include "../common/common.h"
 #include "../common/linalg_op.h"
+#include "../common/numeric.h"  // Reduce
 #include "../common/pseudo_huber.h"
+#include "../common/stats.h"
 #include "../common/threading_utils.h"
 #include "../common/transform.h"
 #include "./regression_loss.h"
+#include "adaptive.h"
+#include "xgboost/base.h"
+#include "xgboost/data.h"
+#include "xgboost/generic_parameters.h"
 #include "xgboost/host_device_vector.h"
 #include "xgboost/json.h"
+#include "xgboost/linalg.h"
 #include "xgboost/parameter.h"
 #include "xgboost/span.h"
 
 #if defined(XGBOOST_USE_CUDA)
+#include "../common/device_helpers.cuh"
 #include "../common/linalg_op.cuh"
 #endif  // defined(XGBOOST_USE_CUDA)
 
 namespace xgboost {
 namespace obj {
 namespace {
-void CheckRegInputs(MetaInfo const& info, HostDeviceVector<bst_float> const& preds) {
+void CheckInitInputs(MetaInfo const& info) {
   CHECK_EQ(info.labels.Shape(0), info.num_row_) << "Invalid shape of labels.";
-  CHECK_EQ(info.labels.Size(), preds.Size()) << "Invalid shape of labels.";
   if (!info.weights_.Empty()) {
     CHECK_EQ(info.weights_.Size(), info.num_row_)
         << "Number of weights should be equal to number of data points.";
   }
+}
+
+void CheckRegInputs(MetaInfo const& info, HostDeviceVector<bst_float> const& preds) {
+  CheckInitInputs(info);
+  CHECK_EQ(info.labels.Size(), preds.Size()) << "Invalid shape of labels.";
 }
 }  // anonymous namespace
 
@@ -67,9 +79,7 @@ class RegLossObj : public ObjFunction {
     param_.UpdateAllowUnknown(args);
   }
 
-  struct ObjInfo Task() const override {
-    return Loss::Info();
-  }
+  ObjInfo Task() const override { return Loss::Info(); }
 
   uint32_t Targets(MetaInfo const& info) const override {
     // Multi-target regression.
@@ -209,12 +219,12 @@ class PseudoHuberRegression : public ObjFunction {
 
  public:
   void Configure(Args const& args) override { param_.UpdateAllowUnknown(args); }
-  struct ObjInfo Task() const override { return {ObjInfo::kRegression, false}; }
+  ObjInfo Task() const override { return ObjInfo::kRegression; }
   uint32_t Targets(MetaInfo const& info) const override {
     return std::max(static_cast<size_t>(1), info.labels.Shape(1));
   }
 
-  void GetGradient(HostDeviceVector<bst_float> const& preds, const MetaInfo& info, int iter,
+  void GetGradient(HostDeviceVector<bst_float> const& preds, const MetaInfo& info, int /*iter*/,
                    HostDeviceVector<GradientPair>* out_gpair) override {
     CheckRegInputs(info, preds);
     auto slope = param_.huber_slope;
@@ -251,16 +261,16 @@ class PseudoHuberRegression : public ObjFunction {
   void SaveConfig(Json* p_out) const override {
     auto& out = *p_out;
     out["name"] = String("reg:pseudohubererror");
-    out["pseduo_huber_param"] = ToJson(param_);
+    out["pseudo_huber_param"] = ToJson(param_);
   }
 
   void LoadConfig(Json const& in) override {
     auto const& config = get<Object const>(in);
-    if (config.find("pseduo_huber_param") == config.cend()) {
+    if (config.find("pseudo_huber_param") == config.cend()) {
       // The parameter is added in 1.6.
       return;
     }
-    FromJson(in["pseduo_huber_param"], &param_);
+    FromJson(in["pseudo_huber_param"], &param_);
   }
 };
 
@@ -286,9 +296,7 @@ class PoissonRegression : public ObjFunction {
     param_.UpdateAllowUnknown(args);
   }
 
-  struct ObjInfo Task() const override {
-    return {ObjInfo::kRegression, false};
-  }
+  ObjInfo Task() const override { return ObjInfo::kRegression; }
 
   void GetGradient(const HostDeviceVector<bst_float>& preds,
                    const MetaInfo &info, int,
@@ -378,12 +386,8 @@ XGBOOST_REGISTER_OBJECTIVE(PoissonRegression, "count:poisson")
 // cox regression for survival data (negative values mean they are censored)
 class CoxRegression : public ObjFunction {
  public:
-  void Configure(
-      const std::vector<std::pair<std::string, std::string> >&) override {}
-
-  struct ObjInfo Task() const override {
-    return {ObjInfo::kRegression, false};
-  }
+  void Configure(Args const&) override {}
+  ObjInfo Task() const override { return ObjInfo::kRegression; }
 
   void GetGradient(const HostDeviceVector<bst_float>& preds,
                    const MetaInfo &info, int,
@@ -479,12 +483,8 @@ XGBOOST_REGISTER_OBJECTIVE(CoxRegression, "survival:cox")
 // gamma regression
 class GammaRegression : public ObjFunction {
  public:
-  void Configure(
-      const std::vector<std::pair<std::string, std::string> >&) override {}
-
-  struct ObjInfo Task() const override {
-    return {ObjInfo::kRegression, false};
-  }
+  void Configure(Args const&) override {}
+  ObjInfo Task() const override { return ObjInfo::kRegression; }
 
   void GetGradient(const HostDeviceVector<bst_float> &preds,
                    const MetaInfo &info, int,
@@ -582,9 +582,7 @@ class TweedieRegression : public ObjFunction {
     metric_ = os.str();
   }
 
-  struct ObjInfo Task() const override {
-    return {ObjInfo::kRegression, false};
-  }
+  ObjInfo Task() const override { return ObjInfo::kRegression; }
 
   void GetGradient(const HostDeviceVector<bst_float>& preds,
                    const MetaInfo &info, int,
@@ -675,5 +673,99 @@ XGBOOST_REGISTER_OBJECTIVE(TweedieRegression, "reg:tweedie")
 .describe("Tweedie regression for insurance data.")
 .set_body([]() { return new TweedieRegression(); });
 
+class MeanAbsoluteError : public ObjFunction {
+ public:
+  void Configure(Args const&) override {}
+  ObjInfo Task() const override { return {ObjInfo::kRegression, true, true}; }
+
+  void GetGradient(HostDeviceVector<bst_float> const& preds, const MetaInfo& info, int /*iter*/,
+                   HostDeviceVector<GradientPair>* out_gpair) override {
+    CheckRegInputs(info, preds);
+    auto labels = info.labels.View(ctx_->gpu_id);
+
+    out_gpair->SetDevice(ctx_->gpu_id);
+    out_gpair->Resize(info.labels.Size());
+    auto gpair = linalg::MakeVec(out_gpair);
+
+    preds.SetDevice(ctx_->gpu_id);
+    auto predt = linalg::MakeVec(&preds);
+    info.weights_.SetDevice(ctx_->gpu_id);
+    common::OptionalWeights weight{ctx_->IsCPU() ? info.weights_.ConstHostSpan()
+                                                 : info.weights_.ConstDeviceSpan()};
+
+    linalg::ElementWiseKernel(ctx_, labels, [=] XGBOOST_DEVICE(size_t i, float const y) mutable {
+      auto sign = [](auto x) {
+        return (x > static_cast<decltype(x)>(0)) - (x < static_cast<decltype(x)>(0));
+      };
+      auto sample_id = std::get<0>(linalg::UnravelIndex(i, labels.Shape()));
+      auto grad = sign(predt(i) - y) * weight[i];
+      auto hess = weight[sample_id];
+      gpair(i) = GradientPair{grad, hess};
+    });
+  }
+
+  void InitEstimation(MetaInfo const& info, linalg::Tensor<float, 1>* base_margin) const override {
+    CheckInitInputs(info);
+    base_margin->Reshape(1);
+    auto out = base_margin->HostView();
+
+    double w{0.0};
+    if (info.weights_.Empty()) {
+      w = static_cast<double>(info.num_row_);
+    } else {
+      w = common::Reduce(ctx_, info.weights_);
+    }
+
+    if (info.num_row_ == 0) {
+      out(0) = 0;
+    } else {
+      // weighted avg
+      out(0) = common::Median(ctx_, info.labels, info.weights_) * w;
+    }
+
+    collective::Allreduce<collective::Operation::kSum>(out.Values().data(), out.Values().size());
+    collective::Allreduce<collective::Operation::kSum>(&w, 1);
+
+    if (common::CloseTo(w, 0.0)) {
+      // Mostly for handling empty dataset test.
+      LOG(WARNING) << "Sum of weights is close to 0.0, skipping base score estimation.";
+      out(0) = ObjFunction::DefaultBaseScore();
+      return;
+    }
+    std::transform(linalg::cbegin(out), linalg::cend(out), linalg::begin(out),
+                   [w](float v) { return v / w; });
+  }
+
+  void UpdateTreeLeaf(HostDeviceVector<bst_node_t> const& position, MetaInfo const& info,
+                      HostDeviceVector<float> const& prediction, RegTree* p_tree) const override {
+    if (ctx_->IsCPU()) {
+      auto const& h_position = position.ConstHostVector();
+      detail::UpdateTreeLeafHost(ctx_, h_position, info, prediction, 0.5, p_tree);
+    } else {
+#if defined(XGBOOST_USE_CUDA)
+      position.SetDevice(ctx_->gpu_id);
+      auto d_position = position.ConstDeviceSpan();
+      detail::UpdateTreeLeafDevice(ctx_, d_position, info, prediction, 0.5, p_tree);
+#else
+      common::AssertGPUSupport();
+#endif  //  defined(XGBOOST_USE_CUDA)
+    }
+  }
+
+  const char* DefaultEvalMetric() const override { return "mae"; }
+
+  void SaveConfig(Json* p_out) const override {
+    auto& out = *p_out;
+    out["name"] = String("reg:absoluteerror");
+  }
+
+  void LoadConfig(Json const& in) override {
+    CHECK_EQ(StringView{get<String const>(in["name"])}, StringView{"reg:absoluteerror"});
+  }
+};
+
+XGBOOST_REGISTER_OBJECTIVE(MeanAbsoluteError, "reg:absoluteerror")
+    .describe("Mean absoluate error.")
+    .set_body([]() { return new MeanAbsoluteError(); });
 }  // namespace obj
 }  // namespace xgboost

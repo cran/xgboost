@@ -99,9 +99,9 @@ class ArrayInterfaceHandler {
   enum Type : std::int8_t { kF4, kF8, kF16, kI1, kI2, kI4, kI8, kU1, kU2, kU4, kU8 };
 
   template <typename PtrType>
-  static PtrType GetPtrFromArrayData(std::map<std::string, Json> const &obj) {
+  static PtrType GetPtrFromArrayData(Object::Map const &obj) {
     auto data_it = obj.find("data");
-    if (data_it == obj.cend()) {
+    if (data_it == obj.cend() || IsA<Null>(data_it->second)) {
       LOG(FATAL) << "Empty data passed in.";
     }
     auto p_data = reinterpret_cast<PtrType>(
@@ -109,9 +109,9 @@ class ArrayInterfaceHandler {
     return p_data;
   }
 
-  static void Validate(std::map<std::string, Json> const &array) {
+  static void Validate(Object::Map const &array) {
     auto version_it = array.find("version");
-    if (version_it == array.cend()) {
+    if (version_it == array.cend() || IsA<Null>(version_it->second)) {
       LOG(FATAL) << "Missing `version' field for array interface";
     }
     if (get<Integer const>(version_it->second) > 3) {
@@ -119,28 +119,31 @@ class ArrayInterfaceHandler {
     }
 
     auto typestr_it = array.find("typestr");
-    if (typestr_it == array.cend()) {
+    if (typestr_it == array.cend() || IsA<Null>(typestr_it->second)) {
       LOG(FATAL) << "Missing `typestr' field for array interface";
     }
 
     auto typestr = get<String const>(typestr_it->second);
     CHECK(typestr.size() == 3 || typestr.size() == 4) << ArrayInterfaceErrors::TypestrFormat();
 
-    if (array.find("shape") == array.cend()) {
+    auto shape_it = array.find("shape");
+    if (shape_it == array.cend() || IsA<Null>(shape_it->second)) {
       LOG(FATAL) << "Missing `shape' field for array interface";
     }
-    if (array.find("data") == array.cend()) {
+    auto data_it = array.find("data");
+    if (data_it == array.cend() || IsA<Null>(data_it->second)) {
       LOG(FATAL) << "Missing `data' field for array interface";
     }
   }
 
   // Find null mask (validity mask) field
   // Mask object is also an array interface, but with different requirements.
-  static size_t ExtractMask(std::map<std::string, Json> const &column,
+  static size_t ExtractMask(Object::Map const &column,
                             common::Span<RBitField8::value_type> *p_out) {
     auto &s_mask = *p_out;
-    if (column.find("mask") != column.cend()) {
-      auto const &j_mask = get<Object const>(column.at("mask"));
+    auto const &mask_it = column.find("mask");
+    if (mask_it != column.cend() && !IsA<Null>(mask_it->second)) {
+      auto const &j_mask = get<Object const>(mask_it->second);
       Validate(j_mask);
 
       auto p_mask = GetPtrFromArrayData<RBitField8::value_type *>(j_mask);
@@ -173,8 +176,9 @@ class ArrayInterfaceHandler {
       // assume 1 byte alignment.
       size_t const span_size = RBitField8::ComputeStorageSize(n_bits);
 
-      if (j_mask.find("strides") != j_mask.cend()) {
-        auto strides = get<Array const>(column.at("strides"));
+      auto strides_it = j_mask.find("strides");
+      if (strides_it != j_mask.cend() && !IsA<Null>(strides_it->second)) {
+        auto strides = get<Array const>(strides_it->second);
         CHECK_EQ(strides.size(), 1) << ArrayInterfaceErrors::Dimension(1);
         CHECK_EQ(get<Integer>(strides.at(0)), type_length) << ArrayInterfaceErrors::Contiguous();
       }
@@ -208,7 +212,7 @@ class ArrayInterfaceHandler {
   }
 
   template <int32_t D>
-  static void ExtractShape(std::map<std::string, Json> const &array, size_t (&out_shape)[D]) {
+  static void ExtractShape(Object::Map const &array, size_t (&out_shape)[D]) {
     auto const &j_shape = get<Array const>(array.at("shape"));
     std::vector<size_t> shape_arr(j_shape.size(), 0);
     std::transform(j_shape.cbegin(), j_shape.cend(), shape_arr.begin(),
@@ -229,7 +233,7 @@ class ArrayInterfaceHandler {
    * \brief Extracts the optiona `strides' field and returns whether the array is c-contiguous.
    */
   template <int32_t D>
-  static bool ExtractStride(std::map<std::string, Json> const &array, size_t itemsize,
+  static bool ExtractStride(Object::Map const &array, size_t itemsize,
                             size_t (&shape)[D], size_t (&stride)[D]) {
     auto strides_it = array.find("strides");
     // No stride is provided
@@ -272,7 +276,7 @@ class ArrayInterfaceHandler {
     return std::equal(stride_tmp, stride_tmp + D, stride);
   }
 
-  static void *ExtractData(std::map<std::string, Json> const &array, size_t size) {
+  static void *ExtractData(Object::Map const &array, size_t size) {
     Validate(array);
     void *p_data = ArrayInterfaceHandler::GetPtrFromArrayData<void *>(array);
     if (!p_data) {
@@ -345,8 +349,8 @@ struct ToDType<int64_t> {
 };
 
 #if !defined(XGBOOST_USE_CUDA)
-inline void ArrayInterfaceHandler::SyncCudaStream(int64_t stream) { common::AssertGPUSupport(); }
-inline bool ArrayInterfaceHandler::IsCudaPtr(void const *ptr) { return false; }
+inline void ArrayInterfaceHandler::SyncCudaStream(int64_t) { common::AssertGPUSupport(); }
+inline bool ArrayInterfaceHandler::IsCudaPtr(void const *) { return false; }
 #endif  // !defined(XGBOOST_USE_CUDA)
 
 /**
@@ -378,7 +382,7 @@ class ArrayInterface {
    *   to a vector of size n_samples.  For for inputs like weights, this should be a 1
    *   dimension column vector even though user might provide a matrix.
    */
-  void Initialize(std::map<std::string, Json> const &array) {
+  void Initialize(Object::Map const &array) {
     ArrayInterfaceHandler::Validate(array);
 
     auto typestr = get<String const>(array.at("typestr"));
@@ -401,7 +405,9 @@ class ArrayInterface {
                             << "XGBoost doesn't support internal broadcasting.";
       }
     } else {
-      CHECK(array.find("mask") == array.cend()) << "Masked array is not yet supported.";
+      auto mask_it = array.find("mask");
+      CHECK(mask_it == array.cend() || IsA<Null>(mask_it->second))
+          << "Masked array is not yet supported.";
     }
 
     auto stream_it = array.find("stream");
@@ -413,7 +419,7 @@ class ArrayInterface {
 
  public:
   ArrayInterface() = default;
-  explicit ArrayInterface(std::map<std::string, Json> const &array) { this->Initialize(array); }
+  explicit ArrayInterface(Object::Map const &array) { this->Initialize(array); }
 
   explicit ArrayInterface(Json const &array) {
     if (IsA<Object>(array)) {

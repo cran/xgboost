@@ -15,7 +15,7 @@ namespace data {
 // Current implementation assumes a single batch. More batches can
 // be supported in future. Does not currently support inferring row/column size
 template <typename AdapterT>
-SimpleDMatrix::SimpleDMatrix(AdapterT* adapter, float missing, int nthread) {
+SimpleDMatrix::SimpleDMatrix(AdapterT* adapter, float missing, int32_t /*nthread*/) {
   auto device = (adapter->DeviceIdx() < 0 || adapter->NumRows() == 0) ? dh::CurrentDevice()
                                                                       : adapter->DeviceIdx();
   CHECK_GE(device, 0);
@@ -35,7 +35,7 @@ SimpleDMatrix::SimpleDMatrix(AdapterT* adapter, float missing, int nthread) {
   info_.num_col_ = adapter->NumColumns();
   info_.num_row_ = adapter->NumRows();
   // Synchronise worker columns
-  rabit::Allreduce<rabit::op::Max>(&info_.num_col_, 1);
+  collective::Allreduce<collective::Operation::kMax>(&info_.num_col_, 1);
 }
 
 template SimpleDMatrix::SimpleDMatrix(CudfAdapter* adapter, float missing,

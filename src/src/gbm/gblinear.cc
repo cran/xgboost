@@ -95,6 +95,8 @@ class GBLinear : public GradientBooster {
     return model_.num_boosted_rounds;
   }
 
+  bool ModelFitted() const override { return BoostedRounds() != 0; }
+
   void Load(dmlc::Stream* fi) override {
     model_.Load(fi);
   }
@@ -134,9 +136,8 @@ class GBLinear : public GradientBooster {
     this->updater_->SaveConfig(&j_updater);
   }
 
-  void DoBoost(DMatrix *p_fmat,
-               HostDeviceVector<GradientPair> *in_gpair,
-               PredictionCacheEntry*) override {
+  void DoBoost(DMatrix* p_fmat, HostDeviceVector<GradientPair>* in_gpair, PredictionCacheEntry*,
+               ObjFunction const*) override {
     monitor_.Start("DoBoost");
 
     model_.LazyInitModel();
@@ -149,8 +150,8 @@ class GBLinear : public GradientBooster {
     monitor_.Stop("DoBoost");
   }
 
-  void PredictBatch(DMatrix *p_fmat, PredictionCacheEntry *predts,
-                    bool training, unsigned layer_begin, unsigned layer_end) override {
+  void PredictBatch(DMatrix* p_fmat, PredictionCacheEntry* predts, bool /*training*/,
+                    uint32_t layer_begin, uint32_t) override {
     monitor_.Start("PredictBatch");
     LinearCheckLayer(layer_begin);
     auto* out_preds = &predts->predictions;
@@ -158,14 +159,14 @@ class GBLinear : public GradientBooster {
     monitor_.Stop("PredictBatch");
   }
   // add base margin
-  void PredictInstance(const SparsePage::Inst &inst,
-                       std::vector<bst_float> *out_preds,
-                       unsigned layer_begin, unsigned layer_end) override {
+  void PredictInstance(const SparsePage::Inst& inst, std::vector<bst_float>* out_preds,
+                       uint32_t layer_begin, uint32_t) override {
     LinearCheckLayer(layer_begin);
     const int ngroup = model_.learner_model_param->num_output_group;
+
+    auto base_score = learner_model_param_->BaseScore(ctx_);
     for (int gid = 0; gid < ngroup; ++gid) {
-      this->Pred(inst, dmlc::BeginPtr(*out_preds), gid,
-                 learner_model_param_->base_score);
+      this->Pred(inst, dmlc::BeginPtr(*out_preds), gid, base_score(0));
     }
   }
 
@@ -173,9 +174,9 @@ class GBLinear : public GradientBooster {
     LOG(FATAL) << "gblinear does not support prediction of leaf index";
   }
 
-  void PredictContribution(DMatrix* p_fmat,
-                           HostDeviceVector<bst_float>* out_contribs,
-                           unsigned layer_begin, unsigned layer_end, bool, int, unsigned) override {
+  void PredictContribution(DMatrix* p_fmat, HostDeviceVector<bst_float>* out_contribs,
+                           uint32_t layer_begin, uint32_t /*layer_end*/, bool, int,
+                           unsigned) override {
     model_.LazyInitModel();
     LinearCheckLayer(layer_begin);
     auto base_margin = p_fmat->Info().base_margin_.View(GenericParameter::kCpuId);
@@ -186,6 +187,7 @@ class GBLinear : public GradientBooster {
     contribs.resize(p_fmat->Info().num_row_ * ncolumns * ngroup);
     // make sure contributions is zeroed, we could be reusing a previously allocated one
     std::fill(contribs.begin(), contribs.end(), 0);
+    auto base_score = learner_model_param_->BaseScore(ctx_);
     // start collecting the contributions
     for (const auto &batch : p_fmat->GetBatches<SparsePage>()) {
       // parallel over local batch
@@ -204,16 +206,16 @@ class GBLinear : public GradientBooster {
           }
           // add base margin to BIAS
           p_contribs[ncolumns - 1] =
-              model_.Bias()[gid] + ((base_margin.Size() != 0) ? base_margin(row_idx, gid)
-                                                              : learner_model_param_->base_score);
+              model_.Bias()[gid] +
+              ((base_margin.Size() != 0) ? base_margin(row_idx, gid) : base_score(0));
         }
       });
     }
   }
 
-  void PredictInteractionContributions(DMatrix* p_fmat,
-                                       HostDeviceVector<bst_float>* out_contribs,
-                                       unsigned layer_begin, unsigned layer_end, bool) override {
+  void PredictInteractionContributions(DMatrix* p_fmat, HostDeviceVector<bst_float>* out_contribs,
+                                       unsigned layer_begin, unsigned /*layer_end*/,
+                                       bool) override {
     LinearCheckLayer(layer_begin);
     std::vector<bst_float>& contribs = out_contribs->HostVector();
 
@@ -270,10 +272,12 @@ class GBLinear : public GradientBooster {
     monitor_.Start("PredictBatchInternal");
     model_.LazyInitModel();
     std::vector<bst_float> &preds = *out_preds;
-    auto base_margin = p_fmat->Info().base_margin_.View(GenericParameter::kCpuId);
+    auto base_margin = p_fmat->Info().base_margin_.View(Context::kCpuId);
     // start collecting the prediction
     const int ngroup = model_.learner_model_param->num_output_group;
     preds.resize(p_fmat->Info().num_row_ * ngroup);
+
+    auto base_score = learner_model_param_->BaseScore(Context::kCpuId);
     for (const auto &page : p_fmat->GetBatches<SparsePage>()) {
       auto const& batch = page.GetView();
       // output convention: nrow * k, where nrow is number of rows
@@ -287,8 +291,7 @@ class GBLinear : public GradientBooster {
         const size_t ridx = page.base_rowid + i;
         // loop over output groups
         for (int gid = 0; gid < ngroup; ++gid) {
-          float margin =
-              (base_margin.Size() != 0) ? base_margin(ridx, gid) : learner_model_param_->base_score;
+          float margin = (base_margin.Size() != 0) ? base_margin(ridx, gid) : base_score(0);
           this->Pred(batch[i], &preds[ridx * ngroup], gid, margin);
         }
       });

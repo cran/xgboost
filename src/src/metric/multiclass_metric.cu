@@ -4,15 +4,14 @@
  * \brief evaluation metrics for multiclass classification.
  * \author Kailong Chen, Tianqi Chen
  */
-#include <rabit/rabit.h>
 #include <xgboost/metric.h>
 
 #include <atomic>
 #include <cmath>
 
 #include "metric_common.h"
+#include "../collective/communicator-inl.h"
 #include "../common/math.h"
-#include "../common/common.h"
 #include "../common/threading_utils.h"
 
 #if defined(XGBOOST_USE_CUDA)
@@ -167,8 +166,7 @@ class MultiClassMetricsReduction {
  */
 template<typename Derived>
 struct EvalMClassBase : public Metric {
-  double Eval(const HostDeviceVector<float> &preds, const MetaInfo &info,
-              bool distributed) override {
+  double Eval(const HostDeviceVector<float> &preds, const MetaInfo &info) override {
     if (info.labels.Size() == 0) {
       CHECK_EQ(preds.Size(), 0);
     } else {
@@ -186,9 +184,7 @@ struct EvalMClassBase : public Metric {
       dat[0] = result.Residue();
       dat[1] = result.Weights();
     }
-    if (distributed) {
-      rabit::Allreduce<rabit::op::Sum>(dat, 2);
-    }
+    collective::Allreduce<collective::Operation::kSum>(dat, 2);
     return Derived::GetFinal(dat[0], dat[1]);
   }
   /*!
@@ -233,9 +229,7 @@ struct EvalMultiLogLoss : public EvalMClassBase<EvalMultiLogLoss> {
   const char* Name() const override {
     return "mlogloss";
   }
-  XGBOOST_DEVICE static bst_float EvalRow(int label,
-                                          const bst_float *pred,
-                                          size_t nclass) {
+  XGBOOST_DEVICE static bst_float EvalRow(int label, const bst_float* pred, size_t /*nclass*/) {
     const bst_float eps = 1e-16f;
     auto k = static_cast<size_t>(label);
     if (pred[k] > eps) {
@@ -247,11 +241,11 @@ struct EvalMultiLogLoss : public EvalMClassBase<EvalMultiLogLoss> {
 };
 
 XGBOOST_REGISTER_METRIC(MatchError, "merror")
-.describe("Multiclass classification error.")
-.set_body([](const char* param) { return new EvalMatchError(); });
+    .describe("Multiclass classification error.")
+    .set_body([](const char*) { return new EvalMatchError(); });
 
 XGBOOST_REGISTER_METRIC(MultiLogLoss, "mlogloss")
-.describe("Multiclass negative loglikelihood.")
-.set_body([](const char* param) { return new EvalMultiLogLoss(); });
+    .describe("Multiclass negative loglikelihood.")
+    .set_body([](const char*) { return new EvalMultiLogLoss(); });
 }  // namespace metric
 }  // namespace xgboost

@@ -8,10 +8,9 @@
 #ifndef XGBOOST_LEARNER_H_
 #define XGBOOST_LEARNER_H_
 
-#include <dmlc/any.h>
 #include <xgboost/base.h>
 #include <xgboost/feature_map.h>
-#include <xgboost/generic_parameters.h>
+#include <xgboost/generic_parameters.h>  // Context
 #include <xgboost/host_device_vector.h>
 #include <xgboost/model.h>
 #include <xgboost/predictor.h>
@@ -139,21 +138,16 @@ class Learner : public Model, public Configurable, public dmlc::Serializable {
   /*!
    * \brief Inplace prediction.
    *
-   * \param          x           A type erased data adapter.
-   * \param          p_m         An optional Proxy DMatrix object storing meta info like
-   *                             base margin.  Can be nullptr.
+   * \param          p_fmat      A proxy DMatrix that contains the data and related meta info.
    * \param          type        Prediction type.
    * \param          missing     Missing value in the data.
    * \param [in,out] out_preds   Pointer to output prediction vector.
    * \param          layer_begin Beginning of boosted tree layer used for prediction.
    * \param          layer_end   End of booster layer. 0 means do not limit trees.
    */
-  virtual void InplacePredict(dmlc::any const &x,
-                              std::shared_ptr<DMatrix> p_m,
-                              PredictionType type,
-                              float missing,
-                              HostDeviceVector<bst_float> **out_preds,
-                              uint32_t layer_begin, uint32_t layer_end) = 0;
+  virtual void InplacePredict(std::shared_ptr<DMatrix> p_m, PredictionType type, float missing,
+                              HostDeviceVector<bst_float>** out_preds, uint32_t layer_begin,
+                              uint32_t layer_end) = 0;
 
   /*!
    * \brief Calculate feature score.  See doc in C API for outputs.
@@ -247,10 +241,6 @@ class Learner : public Model, public Configurable, public dmlc::Serializable {
   virtual void GetFeatureTypes(std::vector<std::string>* ft) const = 0;
 
   /*!
-   * \return whether the model allow lazy checkpoint in rabit.
-   */
-  bool AllowLazyCheckPoint() const;
-  /*!
    * \brief Slice the model.
    *
    * See InplacePredict for layer parameters.
@@ -283,7 +273,7 @@ class Learner : public Model, public Configurable, public dmlc::Serializable {
   /**
    * \brief Return the context object of this Booster.
    */
-  virtual GenericParameter const* Ctx() const = 0;
+  virtual Context const* Ctx() const = 0;
   /*!
    * \brief Get configuration arguments currently stored by the learner
    * \return Key-value pairs representing configuration arguments
@@ -298,7 +288,7 @@ class Learner : public Model, public Configurable, public dmlc::Serializable {
   /*! \brief The evaluation metrics used to evaluate the model. */
   std::vector<std::unique_ptr<Metric> > metrics_;
   /*! \brief Training parameter. */
-  GenericParameter generic_parameters_;
+  Context ctx_;
 };
 
 struct LearnerModelParamLegacy;
@@ -307,8 +297,14 @@ struct LearnerModelParamLegacy;
  * \brief Basic Model Parameters, used to describe the booster.
  */
 struct LearnerModelParam {
-  /* \brief global bias */
-  bst_float base_score { 0.5f };
+ private:
+  /**
+   * \brief Global bias, this is just a scalar value but can be extended to vector when we
+   *        support multi-class and multi-target.
+   */
+  linalg::Tensor<float, 1> base_score_;
+
+ public:
   /* \brief number of features  */
   uint32_t num_feature { 0 };
   /* \brief number of classes, if it is multi-class classification  */
@@ -319,9 +315,20 @@ struct LearnerModelParam {
   LearnerModelParam() = default;
   // As the old `LearnerModelParamLegacy` is still used by binary IO, we keep
   // this one as an immutable copy.
-  LearnerModelParam(LearnerModelParamLegacy const& user_param, float base_margin, ObjInfo t);
+  LearnerModelParam(Context const* ctx, LearnerModelParamLegacy const& user_param,
+                    linalg::Tensor<float, 1> base_margin, ObjInfo t);
+  LearnerModelParam(LearnerModelParamLegacy const& user_param, ObjInfo t);
+  LearnerModelParam(bst_feature_t n_features, linalg::Tensor<float, 1> base_margin,
+                    uint32_t n_groups)
+      : base_score_{std::move(base_margin)}, num_feature{n_features}, num_output_group{n_groups} {}
+
+  linalg::TensorView<float const, 1> BaseScore(Context const* ctx) const;
+  linalg::TensorView<float const, 1> BaseScore(int32_t device) const;
+
+  void Copy(LearnerModelParam const& that);
+
   /* \brief Whether this parameter is initialized with LearnerModelParamLegacy. */
-  bool Initialized() const { return num_feature != 0; }
+  bool Initialized() const { return num_feature != 0 && num_output_group != 0; }
 };
 
 }  // namespace xgboost

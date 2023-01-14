@@ -22,6 +22,7 @@
 #include "row_set.h"
 #include "threading_utils.h"
 #include "timer.h"
+#include "algorithm.h"  // SegmentId
 
 namespace xgboost {
 class GHistIndexMatrix;
@@ -40,8 +41,6 @@ class HistogramCuts {
   float max_cat_{-1.0f};
 
  protected:
-  using BinIdx = uint32_t;
-
   void Swap(HistogramCuts&& that) noexcept(true) {
     std::swap(cut_values_, that.cut_values_);
     std::swap(cut_ptrs_, that.cut_ptrs_);
@@ -110,42 +109,58 @@ class HistogramCuts {
 
   // Return the index of a cut point that is strictly greater than the input
   // value, or the last available index if none exists
-  BinIdx SearchBin(float value, bst_feature_t column_id, std::vector<uint32_t> const& ptrs,
-                   std::vector<float> const& values) const {
+  bst_bin_t SearchBin(float value, bst_feature_t column_id, std::vector<uint32_t> const& ptrs,
+                      std::vector<float> const& values) const {
     auto end = ptrs[column_id + 1];
     auto beg = ptrs[column_id];
     auto it = std::upper_bound(values.cbegin() + beg, values.cbegin() + end, value);
-    BinIdx idx = it - values.cbegin();
+    auto idx = it - values.cbegin();
     idx -= !!(idx == end);
     return idx;
   }
 
-  BinIdx SearchBin(float value, bst_feature_t column_id) const {
+  bst_bin_t SearchBin(float value, bst_feature_t column_id) const {
     return this->SearchBin(value, column_id, Ptrs(), Values());
   }
 
   /**
    * \brief Search the bin index for numerical feature.
    */
-  BinIdx SearchBin(Entry const& e) const {
-    return SearchBin(e.fvalue, e.index);
-  }
+  bst_bin_t SearchBin(Entry const& e) const { return SearchBin(e.fvalue, e.index); }
 
   /**
    * \brief Search the bin index for categorical feature.
    */
-  BinIdx SearchCatBin(Entry const &e) const {
-    auto const &ptrs = this->Ptrs();
-    auto const &vals = this->Values();
-    auto end = ptrs.at(e.index + 1) + vals.cbegin();
-    auto beg = ptrs[e.index] + vals.cbegin();
+  bst_bin_t SearchCatBin(float value, bst_feature_t fidx, std::vector<uint32_t> const& ptrs,
+                         std::vector<float> const& vals) const {
+    auto end = ptrs.at(fidx + 1) + vals.cbegin();
+    auto beg = ptrs[fidx] + vals.cbegin();
     // Truncates the value in case it's not perfectly rounded.
-    auto v  = static_cast<float>(common::AsCat(e.fvalue));
+    auto v = static_cast<float>(common::AsCat(value));
     auto bin_idx = std::lower_bound(beg, end, v) - vals.cbegin();
-    if (bin_idx == ptrs.at(e.index + 1)) {
+    if (bin_idx == ptrs.at(fidx + 1)) {
       bin_idx -= 1;
     }
     return bin_idx;
+  }
+  bst_bin_t SearchCatBin(float value, bst_feature_t fidx) const {
+    auto const& ptrs = this->Ptrs();
+    auto const& vals = this->Values();
+    return this->SearchCatBin(value, fidx, ptrs, vals);
+  }
+  bst_bin_t SearchCatBin(Entry const& e) const { return SearchCatBin(e.fvalue, e.index); }
+
+  /**
+   * \brief Return numerical bin value given bin index.
+   */
+  static float NumericBinValue(std::vector<std::uint32_t> const& ptrs,
+                               std::vector<float> const& vals, std::vector<float> const& mins,
+                               bst_feature_t fidx, bst_bin_t bin_idx) {
+    auto lower = static_cast<bst_bin_t>(ptrs[fidx]);
+    if (bin_idx == lower) {
+      return mins[fidx];
+    }
+    return vals[bin_idx - 1];
   }
 };
 
@@ -155,47 +170,34 @@ class HistogramCuts {
  * \param use_sorted Whether should we use SortedCSC for sketching, it's more efficient
  *                   but consumes more memory.
  */
-inline HistogramCuts SketchOnDMatrix(DMatrix* m, int32_t max_bins, int32_t n_threads,
-                                     bool use_sorted = false, Span<float> const hessian = {}) {
-  HistogramCuts out;
-  auto const& info = m->Info();
-  std::vector<std::vector<bst_row_t>> column_sizes(n_threads);
-  for (auto& column : column_sizes) {
-    column.resize(info.num_col_, 0);
-  }
-  std::vector<bst_row_t> reduced(info.num_col_, 0);
-  for (auto const& page : m->GetBatches<SparsePage>()) {
-    auto const& entries_per_column =
-        HostSketchContainer::CalcColumnSize(page, info.num_col_, n_threads);
-    for (size_t i = 0; i < entries_per_column.size(); ++i) {
-      reduced[i] += entries_per_column[i];
-    }
-  }
+HistogramCuts SketchOnDMatrix(DMatrix* m, int32_t max_bins, int32_t n_threads,
+                              bool use_sorted = false, Span<float> const hessian = {});
 
-  if (!use_sorted) {
-    HostSketchContainer container(max_bins, m->Info(), reduced, HostSketchContainer::UseGroup(info),
-                                  hessian, n_threads);
-    for (auto const& page : m->GetBatches<SparsePage>()) {
-      container.PushRowPage(page, info, hessian);
-    }
-    container.MakeCuts(&out);
-  } else {
-    SortedSketchContainer container{
-        max_bins, m->Info(), reduced, HostSketchContainer::UseGroup(info), hessian, n_threads};
-    for (auto const& page : m->GetBatches<SortedCSCPage>()) {
-      container.PushColPage(page, info, hessian);
-    }
-    container.MakeCuts(&out);
-  }
-
-  return out;
-}
-
-enum BinTypeSize : uint32_t {
-  kUint8BinsTypeSize  = 1,
+enum BinTypeSize : uint8_t {
+  kUint8BinsTypeSize = 1,
   kUint16BinsTypeSize = 2,
   kUint32BinsTypeSize = 4
 };
+
+/**
+ * \brief Dispatch for bin type, fn is a function that accepts a scalar of the bin type.
+ */
+template <typename Fn>
+auto DispatchBinType(BinTypeSize type, Fn&& fn) {
+  switch (type) {
+    case kUint8BinsTypeSize: {
+      return fn(uint8_t{});
+    }
+    case kUint16BinsTypeSize: {
+      return fn(uint16_t{});
+    }
+    case kUint32BinsTypeSize: {
+      return fn(uint32_t{});
+    }
+  }
+  LOG(FATAL) << "Unreachable";
+  return fn(uint32_t{});
+}
 
 /**
  * \brief Optionally compressed gradient index. The compression works only with dense
@@ -205,6 +207,28 @@ enum BinTypeSize : uint32_t {
  *   storage class.
  */
 struct Index {
+  // Inside the compressor, bin_idx is the index for cut value across all features. By
+  // subtracting it with starting pointer of each feature, we can reduce it to smaller
+  // value and store it with smaller types. Usable only with dense data.
+  //
+  // For sparse input we have to store an addition feature index (similar to sparse matrix
+  // formats like CSR) for each bin in index field to choose the right offset.
+  template <typename T>
+  struct CompressBin {
+    uint32_t const* offsets;
+
+    template <typename Bin, typename Feat>
+    auto operator()(Bin bin_idx, Feat fidx) const {
+      return static_cast<T>(bin_idx - offsets[fidx]);
+    }
+  };
+
+  template <typename T>
+  CompressBin<T> MakeCompressor() const {
+    uint32_t const* offsets = this->Offset();
+    return CompressBin<T>{offsets};
+  }
+
   Index() { SetBinTypeSize(binTypeSize_); }
   Index(const Index& i) = delete;
   Index& operator=(Index i) = delete;
@@ -296,10 +320,10 @@ struct Index {
 };
 
 template <typename GradientIndex>
-int32_t XGBOOST_HOST_DEV_INLINE BinarySearchBin(size_t begin, size_t end,
-                                                GradientIndex const &data,
-                                                uint32_t const fidx_begin,
-                                                uint32_t const fidx_end) {
+bst_bin_t XGBOOST_HOST_DEV_INLINE BinarySearchBin(size_t begin, size_t end,
+                                                  GradientIndex const& data,
+                                                  uint32_t const fidx_begin,
+                                                  uint32_t const fidx_end) {
   size_t previous_middle = std::numeric_limits<size_t>::max();
   while (end != begin) {
     size_t middle = begin + (end - begin) / 2;
@@ -324,58 +348,44 @@ int32_t XGBOOST_HOST_DEV_INLINE BinarySearchBin(size_t begin, size_t end,
   return -1;
 }
 
-class ColumnMatrix;
-
-template<typename GradientSumT>
-using GHistRow = Span<xgboost::detail::GradientPairInternal<GradientSumT> >;
+using GHistRow = Span<xgboost::GradientPairPrecise>;
 
 /*!
  * \brief fill a histogram by zeros
  */
-template<typename GradientSumT>
-void InitilizeHistByZeroes(GHistRow<GradientSumT> hist, size_t begin, size_t end);
+void InitilizeHistByZeroes(GHistRow hist, size_t begin, size_t end);
 
 /*!
  * \brief Increment hist as dst += add in range [begin, end)
  */
-template<typename GradientSumT>
-void IncrementHist(GHistRow<GradientSumT> dst, const GHistRow<GradientSumT> add,
-                   size_t begin, size_t end);
+void IncrementHist(GHistRow dst, const GHistRow add, size_t begin, size_t end);
 
 /*!
  * \brief Copy hist from src to dst in range [begin, end)
  */
-template<typename GradientSumT>
-void CopyHist(GHistRow<GradientSumT> dst, const GHistRow<GradientSumT> src,
-              size_t begin, size_t end);
+void CopyHist(GHistRow dst, const GHistRow src, size_t begin, size_t end);
 
 /*!
  * \brief Compute Subtraction: dst = src1 - src2 in range [begin, end)
  */
-template<typename GradientSumT>
-void SubtractionHist(GHistRow<GradientSumT> dst, const GHistRow<GradientSumT> src1,
-                     const GHistRow<GradientSumT> src2,
-                     size_t begin, size_t end);
+void SubtractionHist(GHistRow dst, const GHistRow src1, const GHistRow src2, size_t begin,
+                     size_t end);
 
 /*!
  * \brief histogram of gradient statistics for multiple nodes
  */
-template<typename GradientSumT>
 class HistCollection {
  public:
-  using GHistRowT = GHistRow<GradientSumT>;
-  using GradientPairT = xgboost::detail::GradientPairInternal<GradientSumT>;
-
   // access histogram for i-th node
-  GHistRowT operator[](bst_uint nid) const {
+  GHistRow operator[](bst_uint nid) const {
     constexpr uint32_t kMax = std::numeric_limits<uint32_t>::max();
     const size_t id = row_ptr_.at(nid);
     CHECK_NE(id, kMax);
-    GradientPairT* ptr = nullptr;
+    GradientPairPrecise* ptr = nullptr;
     if (contiguous_allocation_) {
-      ptr = const_cast<GradientPairT*>(data_[0].data() + nbins_*id);
+      ptr = const_cast<GradientPairPrecise*>(data_[0].data() + nbins_*id);
     } else {
-      ptr = const_cast<GradientPairT*>(data_[id].data());
+      ptr = const_cast<GradientPairPrecise*>(data_[id].data());
     }
     return {ptr, nbins_};
   }
@@ -435,7 +445,7 @@ class HistCollection {
   /*! \brief flag to identify contiguous memory allocation */
   bool contiguous_allocation_ = false;
 
-  std::vector<std::vector<GradientPairT>> data_;
+  std::vector<std::vector<GradientPairPrecise>> data_;
 
   /*! \brief row_ptr_[nid] locates bin for histogram of node nid */
   std::vector<size_t> row_ptr_;
@@ -446,11 +456,8 @@ class HistCollection {
  * Supports processing multiple tree-nodes for nested parallelism
  * Able to reduce histograms across threads in efficient way
  */
-template<typename GradientSumT>
 class ParallelGHistBuilder {
  public:
-  using GHistRowT = GHistRow<GradientSumT>;
-
   void Init(size_t nbins) {
     if (nbins != nbins_) {
       hist_buffer_.Init(nbins);
@@ -461,7 +468,7 @@ class ParallelGHistBuilder {
   // Add new elements if needed, mark all hists as unused
   // targeted_hists - already allocated hists which should contain final results after Reduce() call
   void Reset(size_t nthreads, size_t nodes, const BlockedSpace2d& space,
-             const std::vector<GHistRowT>& targeted_hists) {
+             const std::vector<GHistRow>& targeted_hists) {
     hist_buffer_.Init(nbins_);
     tid_nid_to_hist_.clear();
     threads_to_nids_map_.clear();
@@ -482,7 +489,7 @@ class ParallelGHistBuilder {
   }
 
   // Get specified hist, initialize hist by zeros if it wasn't used before
-  GHistRowT GetInitializedHist(size_t tid, size_t nid) {
+  GHistRow GetInitializedHist(size_t tid, size_t nid) {
     CHECK_LT(nid, nodes_);
     CHECK_LT(tid, nthreads_);
 
@@ -490,7 +497,7 @@ class ParallelGHistBuilder {
     if (idx >= 0) {
       hist_buffer_.AllocateData(idx);
     }
-    GHistRowT hist = idx == -1 ? targeted_hists_[nid] : hist_buffer_[idx];
+    GHistRow hist = idx == -1 ? targeted_hists_[nid] : hist_buffer_[idx];
 
     if (!hist_was_used_[tid * nodes_ + nid]) {
       InitilizeHistByZeroes(hist, 0, hist.size());
@@ -505,7 +512,7 @@ class ParallelGHistBuilder {
     CHECK_GT(end, begin);
     CHECK_LT(nid, nodes_);
 
-    GHistRowT dst = targeted_hists_[nid];
+    GHistRow dst = targeted_hists_[nid];
 
     bool is_updated = false;
     for (size_t tid = 0; tid < nthreads_; ++tid) {
@@ -513,7 +520,7 @@ class ParallelGHistBuilder {
         is_updated = true;
 
         int idx = tid_nid_to_hist_.at({tid, nid});
-        GHistRowT src = idx == -1 ? targeted_hists_[nid] : hist_buffer_[idx];
+        GHistRow src = idx == -1 ? targeted_hists_[nid] : hist_buffer_[idx];
 
         if (dst.data() != src.data()) {
           IncrementHist(dst, src, begin, end);
@@ -599,7 +606,7 @@ class ParallelGHistBuilder {
   /*! \brief number of nodes which will be processed in parallel  */
   size_t nodes_ = 0;
   /*! \brief Buffer for additional histograms for Parallel processing  */
-  HistCollection<GradientSumT> hist_buffer_;
+  HistCollection hist_buffer_;
   /*!
    * \brief Marks which hists were used, it means that they should be merged.
    * Contains only {true or false} values
@@ -610,7 +617,7 @@ class ParallelGHistBuilder {
   /*! \brief Buffer for additional histograms for Parallel processing  */
   std::vector<bool> threads_to_nids_map_;
   /*! \brief Contains histograms for final results  */
-  std::vector<GHistRowT> targeted_hists_;
+  std::vector<GHistRow> targeted_hists_;
   /*!
    * \brief map pair {tid, nid} to index of allocated histogram from hist_buffer_ and targeted_hists_,
    * -1 is reserved for targeted_hists_
@@ -621,19 +628,16 @@ class ParallelGHistBuilder {
 /*!
  * \brief builder for histograms of gradient statistics
  */
-template<typename GradientSumT>
 class GHistBuilder {
  public:
-  using GHistRowT = GHistRow<GradientSumT>;
-
   GHistBuilder() = default;
   explicit GHistBuilder(uint32_t nbins): nbins_{nbins} {}
 
   // construct a histogram via histogram aggregation
   template <bool any_missing>
-  void BuildHist(const std::vector<GradientPair> &gpair,
-                 const RowSetCollection::Elem row_indices,
-                 const GHistIndexMatrix &gmat, GHistRowT hist) const;
+  void BuildHist(const std::vector<GradientPair>& gpair, const RowSetCollection::Elem row_indices,
+                 const GHistIndexMatrix& gmat, GHistRow hist,
+                 bool force_read_by_column = false) const;
   uint32_t GetNumBins() const {
       return nbins_;
   }

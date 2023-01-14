@@ -34,11 +34,11 @@ DMLC_REGISTRY_FILE_TAG(aft_obj_gpu);
 
 class AFTObj : public ObjFunction {
  public:
-  void Configure(const std::vector<std::pair<std::string, std::string> >& args) override {
+  void Configure(Args const& args) override {
     param_.UpdateAllowUnknown(args);
   }
 
-  ObjInfo Task() const override { return {ObjInfo::kSurvival, false}; }
+  ObjInfo Task() const override { return ObjInfo::kSurvival; }
 
   template <typename Distribution>
   void GetGradientImpl(const HostDeviceVector<bst_float> &preds,
@@ -70,9 +70,7 @@ class AFTObj : public ObjFunction {
         &info.weights_);
   }
 
-  void GetGradient(const HostDeviceVector<bst_float>& preds,
-                   const MetaInfo& info,
-                   int iter,
+  void GetGradient(const HostDeviceVector<bst_float>& preds, const MetaInfo& info, int /*iter*/,
                    HostDeviceVector<GradientPair>* out_gpair) override {
     const size_t ndata = preds.Size();
     CHECK_EQ(info.labels_lower_bound_.Size(), ndata);
@@ -115,7 +113,7 @@ class AFTObj : public ObjFunction {
         .Eval(io_preds);
   }
 
-  void EvalTransform(HostDeviceVector<bst_float> *io_preds) override {
+  void EvalTransform(HostDeviceVector<bst_float>* /*io_preds*/) override {
     // do nothing here, since the AFT metric expects untransformed prediction score
   }
 

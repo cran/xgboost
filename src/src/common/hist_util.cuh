@@ -17,6 +17,28 @@
 
 namespace xgboost {
 namespace common {
+namespace cuda {
+/**
+ * copy and paste of the host version, we can't make it a __host__ __device__ function as
+ * the fn might be a host only or device only callable object, which is not allowed by nvcc.
+ */
+template <typename Fn>
+auto __device__ DispatchBinType(BinTypeSize type, Fn&& fn) {
+  switch (type) {
+    case kUint8BinsTypeSize: {
+      return fn(uint8_t{});
+    }
+    case kUint16BinsTypeSize: {
+      return fn(uint16_t{});
+    }
+    case kUint32BinsTypeSize: {
+      return fn(uint32_t{});
+    }
+  }
+  SPAN_CHECK(false);
+  return fn(uint32_t{});
+}
+}  // namespace cuda
 
 namespace detail {
 struct EntryCompareOp {
@@ -184,8 +206,6 @@ void ProcessWeightedSlidingWindow(Batch batch, MetaInfo const& info,
   dh::safe_cuda(cudaSetDevice(device));
   info.weights_.SetDevice(device);
   auto weights = info.weights_.ConstDeviceSpan();
-  dh::caching_device_vector<bst_group_t> group_ptr(info.group_ptr_);
-  auto d_group_ptr = dh::ToSpan(group_ptr);
 
   auto batch_iter = dh::MakeTransformIterator<data::COOTuple>(
     thrust::make_counting_iterator(0llu),
@@ -205,9 +225,13 @@ void ProcessWeightedSlidingWindow(Batch batch, MetaInfo const& info,
   auto d_temp_weights = dh::ToSpan(temp_weights);
 
   if (is_ranking) {
+    if (!weights.empty()) {
+      CHECK_EQ(weights.size(), info.group_ptr_.size() - 1);
+    }
+    dh::caching_device_vector<bst_group_t> group_ptr(info.group_ptr_);
+    auto d_group_ptr = dh::ToSpan(group_ptr);
     auto const weight_iter = dh::MakeTransformIterator<float>(
-        thrust::make_constant_iterator(0lu),
-        [=]__device__(size_t idx) -> float {
+        thrust::make_counting_iterator(0lu), [=] __device__(size_t idx) -> float {
           auto ridx = batch.GetElement(idx).row_idx;
           bst_group_t group_idx = dh::SegmentId(d_group_ptr, ridx);
           return weights[group_idx];
@@ -272,7 +296,7 @@ void AdapterDeviceSketch(Batch batch, int num_bins,
   size_t num_cols = batch.NumCols();
   size_t num_cuts_per_feature = detail::RequiredSampleCutsPerColumn(num_bins, num_rows);
   int32_t device = sketch_container->DeviceIdx();
-  bool weighted = info.weights_.Size() != 0;
+  bool weighted = !info.weights_.Empty();
 
   if (weighted) {
     sketch_batch_num_elements = detail::SketchBatchNumElements(

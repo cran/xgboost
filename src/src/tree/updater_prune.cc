@@ -4,16 +4,13 @@
  * \brief prune a tree given the statistics
  * \author Tianqi Chen
  */
-#include <rabit/rabit.h>
 #include <xgboost/tree_updater.h>
 
-#include <string>
 #include <memory>
 
 #include "xgboost/base.h"
 #include "xgboost/json.h"
 #include "./param.h"
-#include "../common/io.h"
 #include "../common/timer.h"
 namespace xgboost {
 namespace tree {
@@ -21,9 +18,9 @@ namespace tree {
 DMLC_REGISTRY_FILE_TAG(updater_prune);
 
 /*! \brief pruner that prunes a tree after growing finishes */
-class TreePruner: public TreeUpdater {
+class TreePruner : public TreeUpdater {
  public:
-  explicit TreePruner(ObjInfo task) {
+  explicit TreePruner(GenericParameter const* ctx, ObjInfo task) : TreeUpdater(ctx) {
     syncher_.reset(TreeUpdater::Create("sync", ctx_, task));
     pruner_monitor_.Init("TreePruner");
   }
@@ -50,9 +47,9 @@ class TreePruner: public TreeUpdater {
   }
 
   // update the tree, do pruning
-  void Update(HostDeviceVector<GradientPair> *gpair,
-              DMatrix *p_fmat,
-              const std::vector<RegTree*> &trees) override {
+  void Update(HostDeviceVector<GradientPair>* gpair, DMatrix* p_fmat,
+              common::Span<HostDeviceVector<bst_node_t>> out_position,
+              const std::vector<RegTree*>& trees) override {
     pruner_monitor_.Start("PrunerUpdate");
     // rescale learning rate according to size of trees
     float lr = param_.learning_rate;
@@ -61,7 +58,7 @@ class TreePruner: public TreeUpdater {
       this->DoPrune(tree);
     }
     param_.learning_rate = lr;
-    syncher_->Update(gpair, p_fmat, trees);
+    syncher_->Update(gpair, p_fmat, out_position, trees);
     pruner_monitor_.Stop("PrunerUpdate");
   }
 
@@ -112,9 +109,7 @@ class TreePruner: public TreeUpdater {
 };
 
 XGBOOST_REGISTER_TREE_UPDATER(TreePruner, "prune")
-.describe("Pruner that prune the tree according to statistics.")
-.set_body([](ObjInfo task) {
-    return new TreePruner(task);
-  });
+    .describe("Pruner that prune the tree according to statistics.")
+    .set_body([](GenericParameter const* ctx, ObjInfo task) { return new TreePruner(ctx, task); });
 }  // namespace tree
 }  // namespace xgboost

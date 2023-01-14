@@ -2,10 +2,25 @@
 
 AC_PREREQ(2.69)
 
-AC_INIT([xgboost],[1.6-0],[],[xgboost],[])
+AC_INIT([xgboost],[1.7.3],[],[xgboost],[])
 
-# Use this line to set CC variable to a C compiler
-AC_PROG_CC
+: ${R_HOME=`R RHOME`}
+if test -z "${R_HOME}"; then
+  echo "could not determine R_HOME"
+  exit 1
+fi
+
+CXX14=`"${R_HOME}/bin/R" CMD config CXX14`
+CXX14STD=`"${R_HOME}/bin/R" CMD config CXX14STD`
+CXX="${CXX14} ${CXX14STD}"
+CXXFLAGS=`"${R_HOME}/bin/R" CMD config CXXFLAGS`
+
+CC=`"${R_HOME}/bin/R" CMD config CC`
+CFLAGS=`"${R_HOME}/bin/R" CMD config CFLAGS`
+CPPFLAGS=`"${R_HOME}/bin/R" CMD config CPPFLAGS`
+
+LDFLAGS=`"${R_HOME}/bin/R" CMD config LDFLAGS`
+AC_LANG(C++)
 
 ### Check whether backtrace() is part of libc or the external lib libexecinfo
 AC_MSG_CHECKING([Backtrace lib])
@@ -28,8 +43,15 @@ fi
 
 if test `uname -s` = "Darwin"
 then
-  OPENMP_CXXFLAGS='-Xclang -fopenmp'
-  OPENMP_LIB='-lomp'
+  if command -v brew &> /dev/null
+  then
+    HOMEBREW_LIBOMP_PREFIX=`brew --prefix libomp`
+  else
+    # Homebrew not found
+    HOMEBREW_LIBOMP_PREFIX=''
+  fi
+  OPENMP_CXXFLAGS="-Xpreprocessor -fopenmp -I${HOMEBREW_LIBOMP_PREFIX}/include"
+  OPENMP_LIB="-lomp -L${HOMEBREW_LIBOMP_PREFIX}/lib"
   ac_pkg_openmp=no
   AC_MSG_CHECKING([whether OpenMP will work in a package])
   AC_LANG_CONFTEST([AC_LANG_PROGRAM([[#include <omp.h>]], [[ return (omp_get_max_threads() <= 1); ]])])

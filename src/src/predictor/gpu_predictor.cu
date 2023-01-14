@@ -1,28 +1,29 @@
 /*!
  * Copyright 2017-2021 by Contributors
  */
+#include <GPUTreeShap/gpu_treeshap.h>
 #include <thrust/copy.h>
 #include <thrust/device_ptr.h>
 #include <thrust/device_vector.h>
 #include <thrust/fill.h>
 #include <thrust/host_vector.h>
-#include <GPUTreeShap/gpu_treeshap.h>
+
 #include <memory>
 
+#include "../common/bitfield.h"
+#include "../common/categorical.h"
+#include "../common/common.h"
+#include "../common/device_helpers.cuh"
+#include "../data/device_adapter.cuh"
+#include "../data/ellpack_page.cuh"
+#include "../data/proxy_dmatrix.h"
+#include "../gbm/gbtree_model.h"
+#include "predict_fn.h"
 #include "xgboost/data.h"
+#include "xgboost/host_device_vector.h"
 #include "xgboost/predictor.h"
 #include "xgboost/tree_model.h"
 #include "xgboost/tree_updater.h"
-#include "xgboost/host_device_vector.h"
-
-#include "predict_fn.h"
-#include "../gbm/gbtree_model.h"
-#include "../data/ellpack_page.cuh"
-#include "../data/device_adapter.cuh"
-#include "../common/common.h"
-#include "../common/bitfield.h"
-#include "../common/categorical.h"
-#include "../common/device_helpers.cuh"
 
 namespace xgboost {
 namespace predictor {
@@ -148,10 +149,10 @@ struct SparsePageLoader {
 
 struct EllpackLoader {
   EllpackDeviceAccessor const& matrix;
-  XGBOOST_DEVICE EllpackLoader(EllpackDeviceAccessor const& m, bool,
-                               bst_feature_t, bst_row_t, size_t, float)
+  XGBOOST_DEVICE EllpackLoader(EllpackDeviceAccessor const& m, bool, bst_feature_t, bst_row_t,
+                               size_t, float)
       : matrix{m} {}
-  __device__ __forceinline__ float GetElement(size_t  ridx, size_t  fidx) const {
+  __device__ __forceinline__ float GetElement(size_t ridx, size_t fidx) const {
     auto gidx = matrix.GetBinIndex(ridx, fidx);
     if (gidx == -1) {
       return nan("");
@@ -510,7 +511,7 @@ void ExtractPaths(
           n = d_nodes[n.Parent() + tree_offset];
           path_length++;
         }
-        return PathInfo{int64_t(idx), path_length, tree_idx};
+        return PathInfo{static_cast<int64_t>(idx), path_length, tree_idx};
       });
   auto end = thrust::copy_if(
       thrust::cuda::par(alloc), nodes_transform,
@@ -789,17 +790,19 @@ class GPUPredictor : public xgboost::Predictor {
         m->NumRows(), entry_start, use_shared, output_groups, missing);
   }
 
-  bool InplacePredict(dmlc::any const &x, std::shared_ptr<DMatrix> p_m,
-                      const gbm::GBTreeModel &model, float missing,
-                      PredictionCacheEntry *out_preds, uint32_t tree_begin,
+  bool InplacePredict(std::shared_ptr<DMatrix> p_m, const gbm::GBTreeModel& model, float missing,
+                      PredictionCacheEntry* out_preds, uint32_t tree_begin,
                       unsigned tree_end) const override {
+    auto proxy = dynamic_cast<data::DMatrixProxy*>(p_m.get());
+    CHECK(proxy)<< "Inplace predict accepts only DMatrixProxy as input.";
+    auto x = proxy->Adapter();
     if (x.type() == typeid(std::shared_ptr<data::CupyAdapter>)) {
-      this->DispatchedInplacePredict<
-          data::CupyAdapter, DeviceAdapterLoader<data::CupyAdapterBatch>>(
+      this->DispatchedInplacePredict<data::CupyAdapter,
+                                     DeviceAdapterLoader<data::CupyAdapterBatch>>(
           x, p_m, model, missing, out_preds, tree_begin, tree_end);
     } else if (x.type() == typeid(std::shared_ptr<data::CudfAdapter>)) {
-      this->DispatchedInplacePredict<
-          data::CudfAdapter, DeviceAdapterLoader<data::CudfAdapterBatch>>(
+      this->DispatchedInplacePredict<data::CudfAdapter,
+                                     DeviceAdapterLoader<data::CudfAdapterBatch>>(
           x, p_m, model, missing, out_preds, tree_begin, tree_end);
     } else {
       return false;
@@ -856,13 +859,13 @@ class GPUPredictor : public xgboost::Predictor {
     // Add the base margin term to last column
     p_fmat->Info().base_margin_.SetDevice(ctx_->gpu_id);
     const auto margin = p_fmat->Info().base_margin_.Data()->ConstDeviceSpan();
-    float base_score = model.learner_model_param->base_score;
-    dh::LaunchN(
-        p_fmat->Info().num_row_ * model.learner_model_param->num_output_group,
-        [=] __device__(size_t idx) {
-          phis[(idx + 1) * contributions_columns - 1] +=
-              margin.empty() ? base_score : margin[idx];
-        });
+
+    auto base_score = model.learner_model_param->BaseScore(ctx_);
+    dh::LaunchN(p_fmat->Info().num_row_ * model.learner_model_param->num_output_group,
+                [=] __device__(size_t idx) {
+                  phis[(idx + 1) * contributions_columns - 1] +=
+                      margin.empty() ? base_score(0) : margin[idx];
+                });
   }
 
   void PredictInteractionContributions(DMatrix* p_fmat,
@@ -915,17 +918,17 @@ class GPUPredictor : public xgboost::Predictor {
     // Add the base margin term to last column
     p_fmat->Info().base_margin_.SetDevice(ctx_->gpu_id);
     const auto margin = p_fmat->Info().base_margin_.Data()->ConstDeviceSpan();
-    float base_score = model.learner_model_param->base_score;
+
+    auto base_score = model.learner_model_param->BaseScore(ctx_);
     size_t n_features = model.learner_model_param->num_feature;
-    dh::LaunchN(
-        p_fmat->Info().num_row_ * model.learner_model_param->num_output_group,
-        [=] __device__(size_t idx) {
-          size_t group = idx % ngroup;
-          size_t row_idx = idx / ngroup;
-          phis[gpu_treeshap::IndexPhiInteractions(
-              row_idx, ngroup, group, n_features, n_features, n_features)] +=
-              margin.empty() ? base_score : margin[idx];
-        });
+    dh::LaunchN(p_fmat->Info().num_row_ * model.learner_model_param->num_output_group,
+                [=] __device__(size_t idx) {
+                  size_t group = idx % ngroup;
+                  size_t row_idx = idx / ngroup;
+                  phis[gpu_treeshap::IndexPhiInteractions(row_idx, ngroup, group, n_features,
+                                                          n_features, n_features)] +=
+                      margin.empty() ? base_score(0) : margin[idx];
+                });
   }
 
   void PredictInstance(const SparsePage::Inst&,

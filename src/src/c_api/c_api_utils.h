@@ -6,14 +6,16 @@
 
 #include <algorithm>
 #include <functional>
-#include <vector>
-#include <memory>
+#include <memory>  // std::shared_ptr
 #include <string>
+#include <vector>
 
-#include "xgboost/logging.h"
+#include "xgboost/c_api.h"
+#include "xgboost/data.h"  // DMatrix
 #include "xgboost/json.h"
 #include "xgboost/learner.h"
-#include "xgboost/c_api.h"
+#include "xgboost/logging.h"
+#include "xgboost/string_view.h"  // StringView
 
 namespace xgboost {
 /* \brief Determine the output shape of prediction.
@@ -115,7 +117,7 @@ inline void CalcPredictShape(bool strict_shape, PredictionType type, size_t rows
   }
   }
   CHECK_EQ(
-      std::accumulate(shape.cbegin(), shape.cend(), 1, std::multiplies<>{}),
+      std::accumulate(shape.cbegin(), shape.cend(), static_cast<bst_ulong>(1), std::multiplies<>{}),
       chunksize * rows);
 }
 
@@ -149,7 +151,13 @@ inline uint32_t GetIterationFromTreeLimit(uint32_t ntree_limit, Learner *learner
 
 inline float GetMissing(Json const &config) {
   float missing;
-  auto const& j_missing = config["missing"];
+  auto const &obj = get<Object const>(config);
+  auto it = obj.find("missing");
+  if (it == obj.cend()) {
+    LOG(FATAL) << "Argument `missing` is required.";
+  }
+
+  auto const &j_missing = it->second;
   if (IsA<Number const>(j_missing)) {
     missing = get<Number const>(j_missing);
   } else if (IsA<Integer const>(j_missing)) {
@@ -241,23 +249,46 @@ inline void GenerateFeatureMap(Learner const *learner,
 void XGBBuildInfoDevice(Json* p_info);
 
 template <typename JT>
-auto const &RequiredArg(Json const &in, std::string const &key, StringView func) {
+void TypeCheck(Json const &value, StringView name) {
+  using T = std::remove_const_t<JT> const;
+  if (!IsA<T>(value)) {
+    LOG(FATAL) << "Incorrect type for: `" << name << "`, expecting: `" << T{}.TypeStr()
+               << "`, got: `" << value.GetValue().TypeStr() << "`.";
+  }
+}
+
+template <typename JT>
+auto const &RequiredArg(Json const &in, StringView key, StringView func) {
   auto const &obj = get<Object const>(in);
   auto it = obj.find(key);
   if (it == obj.cend() || IsA<Null>(it->second)) {
-    LOG(FATAL) << "Argument `" << key << "` is required for `" << func << "`";
+    LOG(FATAL) << "Argument `" << key << "` is required for `" << func << "`.";
   }
+  TypeCheck<JT>(it->second, StringView{key});
   return get<std::remove_const_t<JT> const>(it->second);
 }
 
 template <typename JT, typename T>
-auto const &OptionalArg(Json const &in, std::string const &key, T const &dft) {
+auto const &OptionalArg(Json const &in, StringView key, T const &dft) {
   auto const &obj = get<Object const>(in);
   auto it = obj.find(key);
-  if (it != obj.cend()) {
+  if (it != obj.cend() && !IsA<Null>(it->second)) {
+    TypeCheck<JT>(it->second, key);
     return get<std::remove_const_t<JT> const>(it->second);
   }
   return dft;
+}
+
+/**
+ * \brief Get shared ptr from DMatrix C handle with additional checks.
+ */
+inline std::shared_ptr<DMatrix> CastDMatrixHandle(DMatrixHandle const handle) {
+  auto pp_m = static_cast<std::shared_ptr<DMatrix> *>(handle);
+  StringView msg{"Invalid DMatrix handle"};
+  CHECK(pp_m) << msg;
+  auto p_m = *pp_m;
+  CHECK(p_m) << msg;
+  return p_m;
 }
 }  // namespace xgboost
 #endif  // XGBOOST_C_API_C_API_UTILS_H_

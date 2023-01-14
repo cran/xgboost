@@ -1078,10 +1078,8 @@ class ArrowColumnarBatch {
 using ArrowColumnarBatchVec = std::vector<std::unique_ptr<ArrowColumnarBatch>>;
 class RecordBatchesIterAdapter: public dmlc::DataIter<ArrowColumnarBatchVec> {
  public:
-  RecordBatchesIterAdapter(XGDMatrixCallbackNext *next_callback,
-                          int nthread)
-    : next_callback_{next_callback},
-      nbatches_{nthread} {}
+  RecordBatchesIterAdapter(XGDMatrixCallbackNext* next_callback, int nbatch)
+      : next_callback_{next_callback}, nbatches_{nbatch} {}
 
   void BeforeFirst() override {
     CHECK(at_first_) << "Cannot reset RecordBatchesIterAdapter";
@@ -1130,6 +1128,23 @@ class RecordBatchesIterAdapter: public dmlc::DataIter<ArrowColumnarBatchVec> {
   int nbatches_;
   struct ArrowSchemaImporter schema_;
   ArrowColumnarBatchVec batches_;
+};
+
+class SparsePageAdapterBatch {
+  HostSparsePageView page_;
+
+ public:
+  struct Line {
+    Entry const* inst;
+    size_t n;
+    bst_row_t ridx;
+    COOTuple GetElement(size_t idx) const { return {ridx, inst[idx].index, inst[idx].fvalue}; }
+    size_t Size() const { return n; }
+  };
+
+  explicit SparsePageAdapterBatch(HostSparsePageView page) : page_{std::move(page)} {}
+  Line GetLine(size_t ridx) const { return Line{page_[ridx].data(), page_[ridx].size(), ridx}; }
+  size_t Size() const { return page_.Size(); }
 };
 };  // namespace data
 }  // namespace xgboost

@@ -20,8 +20,7 @@ TreeUpdater* TreeUpdater::Create(const std::string& name, GenericParameter const
   if (e == nullptr) {
     LOG(FATAL) << "Unknown tree updater " << name;
   }
-  auto p_updater = (e->body)(task);
-  p_updater->ctx_ = tparam;
+  auto p_updater = (e->body)(tparam, task);
   return p_updater;
 }
 
@@ -34,7 +33,6 @@ DMLC_REGISTRY_LINK_TAG(updater_colmaker);
 DMLC_REGISTRY_LINK_TAG(updater_refresh);
 DMLC_REGISTRY_LINK_TAG(updater_prune);
 DMLC_REGISTRY_LINK_TAG(updater_quantile_hist);
-DMLC_REGISTRY_LINK_TAG(updater_histmaker);
 DMLC_REGISTRY_LINK_TAG(updater_approx);
 DMLC_REGISTRY_LINK_TAG(updater_sync);
 #ifdef XGBOOST_USE_CUDA

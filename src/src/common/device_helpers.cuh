@@ -1,5 +1,5 @@
 /*!
- * Copyright 2017-2021 XGBoost contributors
+ * Copyright 2017-2022 XGBoost contributors
  */
 #pragma once
 #include <thrust/device_ptr.h>
@@ -7,6 +7,8 @@
 #include <thrust/device_malloc_allocator.h>
 #include <thrust/iterator/discard_iterator.h>
 #include <thrust/iterator/transform_output_iterator.h>
+#include <thrust/sequence.h>
+#include <thrust/sort.h>
 #include <thrust/system/cuda/error.h>
 #include <thrust/system_error.h>
 #include <thrust/execution_policy.h>
@@ -17,7 +19,6 @@
 #include <thrust/unique.h>
 #include <thrust/binary_search.h>
 
-#include <rabit/rabit.h>
 #include <cub/cub.cuh>
 #include <cub/util_allocator.cuh>
 
@@ -34,7 +35,9 @@
 #include "xgboost/span.h"
 #include "xgboost/global_config.h"
 
+#include "../collective/communicator-inl.h"
 #include "common.h"
+#include "algorithm.cuh"
 
 #ifdef XGBOOST_USE_NCCL
 #include "nccl.h"
@@ -401,7 +404,7 @@ inline detail::MemoryLogger &GlobalMemoryLogger() {
 // dh::DebugSyncDevice(__FILE__, __LINE__);
 inline void DebugSyncDevice(std::string file="", int32_t line = -1) {
   if (file != "" && line != -1) {
-    auto rank = rabit::GetRank();
+    auto rank = xgboost::collective::GetRank();
     LOG(DEBUG) << "R:" << rank << ": " << file << ":" << line;
   }
   safe_cuda(cudaDeviceSynchronize());
@@ -420,7 +423,7 @@ using XGBBaseDeviceAllocator = thrust::device_malloc_allocator<T>;
 
 inline void ThrowOOMError(std::string const& err, size_t bytes) {
   auto device = CurrentDevice();
-  auto rank = rabit::GetRank();
+  auto rank = xgboost::collective::GetRank();
   std::stringstream ss;
   ss << "Memory allocation error on worker " << rank << ": " << err << "\n"
      << "- Free memory: " << AvailableMemory(device) << "\n"
@@ -734,185 +737,6 @@ using TypedDiscard =
     std::conditional_t<HasThrustMinorVer<12>(), detail::TypedDiscardCTK114<T>,
                        detail::TypedDiscard<T>>;
 
-/**
- * \class AllReducer
- *
- * \brief All reducer class that manages its own communication group and
- * streams. Must be initialised before use. If XGBoost is compiled without NCCL
- * this is a dummy class that will error if used with more than one GPU.
- */
-class AllReducer {
-  bool initialised_ {false};
-  size_t allreduce_bytes_ {0};  // Keep statistics of the number of bytes communicated
-  size_t allreduce_calls_ {0};  // Keep statistics of the number of reduce calls
-#ifdef XGBOOST_USE_NCCL
-  ncclComm_t comm_;
-  cudaStream_t stream_;
-  int device_ordinal_;
-  ncclUniqueId id_;
-#endif
-
- public:
-  AllReducer() = default;
-
-  /**
-   * \brief Initialise with the desired device ordinal for this communication
-   * group.
-   *
-   * \param device_ordinal The device ordinal.
-   */
-  void Init(int _device_ordinal);
-
-  ~AllReducer();
-
-  /**
-   * \brief Allreduce. Use in exactly the same way as NCCL but without needing
-   * streams or comms.
-   *
-   * \param sendbuff                The sendbuff.
-   * \param recvbuff                The recvbuff.
-   * \param count                   Number of elements.
-   */
-
-  void AllReduceSum(const double *sendbuff, double *recvbuff, int count) {
-#ifdef XGBOOST_USE_NCCL
-    CHECK(initialised_);
-    dh::safe_cuda(cudaSetDevice(device_ordinal_));
-    dh::safe_nccl(ncclAllReduce(sendbuff, recvbuff, count, ncclDouble, ncclSum, comm_, stream_));
-    allreduce_bytes_ += count * sizeof(double);
-    allreduce_calls_ += 1;
-#endif
-  }
-
-  /**
-   * \brief Allgather implemented as grouped calls to Broadcast.  This way we can accept
-   *        different size of data on different workers.
-   * \param length_bytes Size of input data in bytes.
-   * \param segments     Size of data on each worker.
-   * \param recvbuf      Buffer storing the result of data from all workers.
-   */
-  void AllGather(void const* data, size_t length_bytes,
-                 std::vector<size_t>* segments, dh::caching_device_vector<char>* recvbuf);
-
-  void AllGather(uint32_t const* data, size_t length,
-                 dh::caching_device_vector<uint32_t>* recvbuf) {
-#ifdef XGBOOST_USE_NCCL
-    CHECK(initialised_);
-    size_t world = rabit::GetWorldSize();
-    recvbuf->resize(length * world);
-    safe_nccl(ncclAllGather(data, recvbuf->data().get(), length, ncclUint32,
-                            comm_, stream_));
-#endif  // XGBOOST_USE_NCCL
-  }
-
-  /**
-   * \brief Allreduce. Use in exactly the same way as NCCL but without needing
-   * streams or comms.
-   *
-   * \param sendbuff                The sendbuff.
-   * \param recvbuff                The recvbuff.
-   * \param count                   Number of elements.
-   */
-
-  void AllReduceSum(const float *sendbuff, float *recvbuff, int count) {
-#ifdef XGBOOST_USE_NCCL
-    CHECK(initialised_);
-    dh::safe_cuda(cudaSetDevice(device_ordinal_));
-    dh::safe_nccl(ncclAllReduce(sendbuff, recvbuff, count, ncclFloat, ncclSum, comm_, stream_));
-    allreduce_bytes_ += count * sizeof(float);
-    allreduce_calls_ += 1;
-#endif
-  }
-
-  /**
-   * \brief Allreduce. Use in exactly the same way as NCCL but without needing streams or comms.
-   *
-   * \param count Number of.
-   *
-   * \param sendbuff                The sendbuff.
-   * \param recvbuff                The recvbuff.
-   * \param count                   Number of.
-   */
-
-  void AllReduceSum(const int64_t *sendbuff, int64_t *recvbuff, int count) {
-#ifdef XGBOOST_USE_NCCL
-    CHECK(initialised_);
-
-    dh::safe_cuda(cudaSetDevice(device_ordinal_));
-    dh::safe_nccl(ncclAllReduce(sendbuff, recvbuff, count, ncclInt64, ncclSum, comm_, stream_));
-#endif
-  }
-
-  void AllReduceSum(const uint32_t *sendbuff, uint32_t *recvbuff, int count) {
-#ifdef XGBOOST_USE_NCCL
-    CHECK(initialised_);
-
-    dh::safe_cuda(cudaSetDevice(device_ordinal_));
-    dh::safe_nccl(ncclAllReduce(sendbuff, recvbuff, count, ncclUint32, ncclSum, comm_, stream_));
-#endif
-  }
-
-  void AllReduceSum(const uint64_t *sendbuff, uint64_t *recvbuff, int count) {
-#ifdef XGBOOST_USE_NCCL
-    CHECK(initialised_);
-
-    dh::safe_cuda(cudaSetDevice(device_ordinal_));
-    dh::safe_nccl(ncclAllReduce(sendbuff, recvbuff, count, ncclUint64, ncclSum, comm_, stream_));
-#endif
-  }
-
-  // Specialization for size_t, which is implementation defined so it might or might not
-  // be one of uint64_t/uint32_t/unsigned long long/unsigned long.
-  template <typename T = size_t,
-            std::enable_if_t<std::is_same<size_t, T>::value &&
-                             !std::is_same<size_t, unsigned long long>::value>  // NOLINT
-                * = nullptr>
-  void AllReduceSum(const T *sendbuff, T *recvbuff, int count) { // NOLINT
-#ifdef XGBOOST_USE_NCCL
-    CHECK(initialised_);
-
-    dh::safe_cuda(cudaSetDevice(device_ordinal_));
-    static_assert(sizeof(unsigned long long) == sizeof(uint64_t), ""); // NOLINT
-    dh::safe_nccl(ncclAllReduce(sendbuff, recvbuff, count, ncclUint64, ncclSum, comm_, stream_));
-#endif
-  }
-
-  /**
-   * \fn  void Synchronize()
-   *
-   * \brief Synchronizes the entire communication group.
-   */
-  void Synchronize() {
-#ifdef XGBOOST_USE_NCCL
-    dh::safe_cuda(cudaSetDevice(device_ordinal_));
-    dh::safe_cuda(cudaStreamSynchronize(stream_));
-#endif
-  };
-
-#ifdef XGBOOST_USE_NCCL
-  /**
-   * \fn  ncclUniqueId GetUniqueId()
-   *
-   * \brief Gets the Unique ID from NCCL to be used in setting up interprocess
-   * communication
-   *
-   * \return the Unique ID
-   */
-  ncclUniqueId GetUniqueId() {
-    static const int kRootRank = 0;
-    ncclUniqueId id;
-    if (rabit::GetRank() == kRootRank) {
-      dh::safe_nccl(ncclGetUniqueId(&id));
-    }
-    rabit::Broadcast(
-        static_cast<void*>(&id),
-        sizeof(ncclUniqueId),
-        static_cast<int>(kRootRank));
-    return id;
-  }
-#endif
-};
-
 template <typename VectorT, typename T = typename VectorT::value_type,
   typename IndexT = typename xgboost::common::Span<T>::index_type>
 xgboost::common::Span<T> ToSpan(
@@ -1183,44 +1007,6 @@ XGBOOST_DEV_INLINE void AtomicAddGpair(OutputGradientT* dest,
             static_cast<typename OutputGradientT::ValueT>(gpair.GetHess()));
 }
 
-/**
- * \brief An atomicAdd designed for gradient pair with better performance.  For general
- *        int64_t atomicAdd, one can simply cast it to unsigned long long.
- */
-XGBOOST_DEV_INLINE void AtomicAdd64As32(int64_t *dst, int64_t src) {
-  uint32_t* y_low = reinterpret_cast<uint32_t *>(dst);
-  uint32_t *y_high = y_low + 1;
-
-  auto cast_src = reinterpret_cast<uint64_t *>(&src);
-
-  uint32_t const x_low = static_cast<uint32_t>(src);
-  uint32_t const x_high = (*cast_src) >> 32;
-
-  auto const old = atomicAdd(y_low, x_low);
-  uint32_t const carry = old > (std::numeric_limits<uint32_t>::max() - x_low) ? 1 : 0;
-  uint32_t const sig = x_high + carry;
-  atomicAdd(y_high, sig);
-}
-
-XGBOOST_DEV_INLINE void
-AtomicAddGpair(xgboost::GradientPairInt64 *dest,
-               xgboost::GradientPairInt64 const &gpair) {
-  auto dst_ptr = reinterpret_cast<int64_t *>(dest);
-  auto g = gpair.GetGrad();
-  auto h = gpair.GetHess();
-
-  AtomicAdd64As32(dst_ptr, g);
-  AtomicAdd64As32(dst_ptr + 1, h);
-}
-
-XGBOOST_DEV_INLINE void
-AtomicAddGpair(xgboost::GradientPairInt32 *dest,
-               xgboost::GradientPairInt32 const &gpair) {
-  auto dst_ptr = reinterpret_cast<typename xgboost::GradientPairInt32::ValueT*>(dest);
-
-  ::atomicAdd(dst_ptr, static_cast<int>(gpair.GetGrad()));
-  ::atomicAdd(dst_ptr + 1, static_cast<int>(gpair.GetHess()));
-}
 
 // Thrust version of this function causes error on Windows
 template <typename ReturnT, typename IterT, typename FuncT>
@@ -1229,17 +1015,7 @@ XGBOOST_DEVICE thrust::transform_iterator<FuncT, IterT, ReturnT> MakeTransformIt
   return thrust::transform_iterator<FuncT, IterT, ReturnT>(iter, func);
 }
 
-template <typename It>
-size_t XGBOOST_DEVICE SegmentId(It first, It last, size_t idx) {
-  size_t segment_id = thrust::upper_bound(thrust::seq, first, last, idx) -
-                      1 - first;
-  return segment_id;
-}
-
-template <typename T>
-size_t XGBOOST_DEVICE SegmentId(xgboost::common::Span<T> segments_ptr, size_t idx) {
-  return SegmentId(segments_ptr.cbegin(), segments_ptr.cend(), idx);
-}
+using xgboost::common::cuda::SegmentId;  // import it for compatibility
 
 namespace detail {
 template <typename Key, typename KeyOutIt>
@@ -1537,6 +1313,43 @@ void SegmentedArgSort(xgboost::common::Span<U> values,
                             sorted_idx.size_bytes(), cudaMemcpyDeviceToDevice));
 }
 
+/**
+ * \brief Different from the above one, this one can handle cases where segment doesn't
+ *        start from 0, but as a result it uses comparison sort.
+ */
+template <typename SegIt, typename ValIt>
+void SegmentedArgSort(SegIt seg_begin, SegIt seg_end, ValIt val_begin, ValIt val_end,
+                      dh::device_vector<size_t> *p_sorted_idx) {
+  using Tup = thrust::tuple<int32_t, float>;
+  auto &sorted_idx = *p_sorted_idx;
+  size_t n = std::distance(val_begin, val_end);
+  sorted_idx.resize(n);
+  dh::Iota(dh::ToSpan(sorted_idx));
+  dh::device_vector<Tup> keys(sorted_idx.size());
+  auto key_it = dh::MakeTransformIterator<Tup>(thrust::make_counting_iterator(0ul),
+                                               [=] XGBOOST_DEVICE(size_t i) -> Tup {
+                                                 int32_t leaf_idx;
+                                                 if (i < *seg_begin) {
+                                                   leaf_idx = -1;
+                                                 } else {
+                                                   leaf_idx = dh::SegmentId(seg_begin, seg_end, i);
+                                                 }
+                                                 auto residue = val_begin[i];
+                                                 return thrust::make_tuple(leaf_idx, residue);
+                                               });
+  dh::XGBCachingDeviceAllocator<char> caching;
+  thrust::copy(thrust::cuda::par(caching), key_it, key_it + keys.size(), keys.begin());
+
+  dh::XGBDeviceAllocator<char> alloc;
+  thrust::stable_sort_by_key(thrust::cuda::par(alloc), keys.begin(), keys.end(), sorted_idx.begin(),
+                             [=] XGBOOST_DEVICE(Tup const &l, Tup const &r) {
+                               if (thrust::get<0>(l) != thrust::get<0>(r)) {
+                                 return thrust::get<0>(l) < thrust::get<0>(r);  // segment index
+                               }
+                               return thrust::get<1>(l) < thrust::get<1>(r);  // residue
+                             });
+}
+
 class CUDAStreamView;
 
 class CUDAEvent {
@@ -1600,5 +1413,27 @@ class CUDAStream {
   }
 
   CUDAStreamView View() const { return CUDAStreamView{stream_}; }
+  void Sync() { this->View().Sync(); }
+};
+
+// Force nvcc to load data as constant
+template <typename T>
+class LDGIterator {
+  using DeviceWordT = typename cub::UnitWord<T>::DeviceWord;
+  static constexpr std::size_t kNumWords = sizeof(T) / sizeof(DeviceWordT);
+
+  const T *ptr_;
+
+ public:
+  XGBOOST_DEVICE explicit LDGIterator(const T *ptr) : ptr_(ptr) {}
+  __device__ T operator[](std::size_t idx) const {
+    DeviceWordT tmp[kNumWords];
+    static_assert(sizeof(tmp) == sizeof(T), "Expect sizes to be equal.");
+#pragma unroll
+    for (int i = 0; i < kNumWords; i++) {
+      tmp[i] = __ldg(reinterpret_cast<const DeviceWordT *>(ptr_ + idx) + i);
+    }
+    return *reinterpret_cast<const T *>(tmp);
+  }
 };
 }  // namespace dh

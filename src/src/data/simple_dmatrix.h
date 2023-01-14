@@ -45,6 +45,7 @@ class SimpleDMatrix : public DMatrix {
   BatchSet<SortedCSCPage> GetSortedColumnBatches() override;
   BatchSet<EllpackPage> GetEllpackBatches(const BatchParam& param) override;
   BatchSet<GHistIndexMatrix> GetGradientIndex(const BatchParam& param) override;
+  BatchSet<ExtSparsePage> GetExtBatches(BatchParam const& param) override;
 
   MetaInfo info_;
   // Primary storage type
@@ -55,12 +56,9 @@ class SimpleDMatrix : public DMatrix {
   std::shared_ptr<GHistIndexMatrix> gradient_index_{nullptr};
   BatchParam batch_param_;
 
-  bool EllpackExists() const override {
-    return static_cast<bool>(ellpack_page_);
-  }
-  bool SparsePageExists() const override {
-    return true;
-  }
+  bool EllpackExists() const override { return static_cast<bool>(ellpack_page_); }
+  bool GHistIndexExists() const override { return static_cast<bool>(gradient_index_); }
+  bool SparsePageExists() const override { return true; }
 
  private:
   Context ctx_;

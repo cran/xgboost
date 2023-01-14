@@ -7,11 +7,11 @@
  *  The expressions like wsum == 0 ? esum : esum / wsum is used to handle empty dataset.
  */
 #include <dmlc/registry.h>
-#include <rabit/rabit.h>
 #include <xgboost/metric.h>
 
 #include <cmath>
 
+#include "../collective/communicator-inl.h"
 #include "../common/common.h"
 #include "../common/math.h"
 #include "../common/pseudo_huber.h"
@@ -171,15 +171,14 @@ class PseudoErrorLoss : public Metric {
  public:
   const char* Name() const override { return "mphe"; }
   void Configure(Args const& args) override { param_.UpdateAllowUnknown(args); }
-  void LoadConfig(Json const& in) override { FromJson(in["pseduo_huber_param"], &param_); }
+  void LoadConfig(Json const& in) override { FromJson(in["pseudo_huber_param"], &param_); }
   void SaveConfig(Json* p_out) const override {
     auto& out = *p_out;
     out["name"] = String(this->Name());
-    out["pseduo_huber_param"] = ToJson(param_);
+    out["pseudo_huber_param"] = ToJson(param_);
   }
 
-  double Eval(const HostDeviceVector<bst_float>& preds, const MetaInfo& info,
-              bool distributed) override {
+  double Eval(const HostDeviceVector<bst_float>& preds, const MetaInfo& info) override {
     CHECK_EQ(info.labels.Shape(0), info.num_row_);
     auto labels = info.labels.View(tparam_->gpu_id);
     preds.SetDevice(tparam_->gpu_id);
@@ -197,8 +196,8 @@ class PseudoErrorLoss : public Metric {
           return std::make_tuple(v, wt);
         });
     double dat[2]{result.Residue(), result.Weights()};
-    if (distributed) {
-      rabit::Allreduce<rabit::op::Sum>(dat, 2);
+    if (collective::IsDistributed()) {
+      collective::Allreduce<collective::Operation::kSum>(dat, 2);
     }
     return EvalRowMAPE::GetFinal(dat[0], dat[1]);
   }
@@ -342,8 +341,7 @@ struct EvalEWiseBase : public Metric {
   EvalEWiseBase() = default;
   explicit EvalEWiseBase(char const* policy_param) : policy_{policy_param} {}
 
-  double Eval(HostDeviceVector<bst_float> const& preds, const MetaInfo& info,
-              bool distributed) override {
+  double Eval(HostDeviceVector<bst_float> const& preds, const MetaInfo& info) override {
     CHECK_EQ(preds.Size(), info.labels.Size())
         << "label and prediction size not match, "
         << "hint: use merror or mlogloss for multi-class classification";
@@ -367,10 +365,7 @@ struct EvalEWiseBase : public Metric {
         });
 
     double dat[2]{result.Residue(), result.Weights()};
-
-    if (distributed) {
-      rabit::Allreduce<rabit::op::Sum>(dat, 2);
-    }
+    collective::Allreduce<collective::Operation::kSum>(dat, 2);
     return Policy::GetFinal(dat[0], dat[1]);
   }
 
@@ -381,40 +376,40 @@ struct EvalEWiseBase : public Metric {
 };
 
 XGBOOST_REGISTER_METRIC(RMSE, "rmse")
-.describe("Rooted mean square error.")
-.set_body([](const char* param) { return new EvalEWiseBase<EvalRowRMSE>(); });
+    .describe("Rooted mean square error.")
+    .set_body([](const char*) { return new EvalEWiseBase<EvalRowRMSE>(); });
 
 XGBOOST_REGISTER_METRIC(RMSLE, "rmsle")
-.describe("Rooted mean square log error.")
-.set_body([](const char* param) { return new EvalEWiseBase<EvalRowRMSLE>(); });
+    .describe("Rooted mean square log error.")
+    .set_body([](const char*) { return new EvalEWiseBase<EvalRowRMSLE>(); });
 
-XGBOOST_REGISTER_METRIC(MAE, "mae")
-.describe("Mean absolute error.")
-.set_body([](const char* param) { return new EvalEWiseBase<EvalRowMAE>(); });
+XGBOOST_REGISTER_METRIC(MAE, "mae").describe("Mean absolute error.").set_body([](const char*) {
+  return new EvalEWiseBase<EvalRowMAE>();
+});
 
 XGBOOST_REGISTER_METRIC(MAPE, "mape")
     .describe("Mean absolute percentage error.")
-    .set_body([](const char* param) { return new EvalEWiseBase<EvalRowMAPE>(); });
+    .set_body([](const char*) { return new EvalEWiseBase<EvalRowMAPE>(); });
 
 XGBOOST_REGISTER_METRIC(LogLoss, "logloss")
-.describe("Negative loglikelihood for logistic regression.")
-.set_body([](const char* param) { return new EvalEWiseBase<EvalRowLogLoss>(); });
+    .describe("Negative loglikelihood for logistic regression.")
+    .set_body([](const char*) { return new EvalEWiseBase<EvalRowLogLoss>(); });
 
 XGBOOST_REGISTER_METRIC(PseudoErrorLoss, "mphe")
     .describe("Mean Pseudo-huber error.")
-    .set_body([](const char* param) { return new PseudoErrorLoss{}; });
+    .set_body([](const char*) { return new PseudoErrorLoss{}; });
 
 XGBOOST_REGISTER_METRIC(PossionNegLoglik, "poisson-nloglik")
-.describe("Negative loglikelihood for poisson regression.")
-.set_body([](const char* param) { return new EvalEWiseBase<EvalPoissonNegLogLik>(); });
+    .describe("Negative loglikelihood for poisson regression.")
+    .set_body([](const char*) { return new EvalEWiseBase<EvalPoissonNegLogLik>(); });
 
 XGBOOST_REGISTER_METRIC(GammaDeviance, "gamma-deviance")
-.describe("Residual deviance for gamma regression.")
-.set_body([](const char* param) { return new EvalEWiseBase<EvalGammaDeviance>(); });
+    .describe("Residual deviance for gamma regression.")
+    .set_body([](const char*) { return new EvalEWiseBase<EvalGammaDeviance>(); });
 
 XGBOOST_REGISTER_METRIC(GammaNLogLik, "gamma-nloglik")
-.describe("Negative log-likelihood for gamma regression.")
-.set_body([](const char* param) { return new EvalEWiseBase<EvalGammaNLogLik>(); });
+    .describe("Negative log-likelihood for gamma regression.")
+    .set_body([](const char*) { return new EvalEWiseBase<EvalGammaNLogLik>(); });
 
 XGBOOST_REGISTER_METRIC(Error, "error")
 .describe("Binary classification error.")

@@ -1,5 +1,5 @@
 /*!
- * Copyright 2015-2018 by Contributors
+ * Copyright 2015-2022 by XGBoost Contributors
  * \file common.h
  * \brief Common utilities
  */
@@ -14,12 +14,12 @@
 #include <exception>
 #include <functional>
 #include <limits>
-#include <type_traits>
-#include <vector>
-#include <string>
-#include <sstream>
 #include <numeric>
+#include <sstream>
+#include <string>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 #if defined(__CUDACC__)
 #include <thrust/system/cuda/error.h>
@@ -164,6 +164,74 @@ class Range {
   Iterator end_;
 };
 
+/**
+ * \brief Transform iterator that takes an index and calls transform operator.
+ *
+ *   This is CPU-only right now as taking host device function as operator complicates the
+ *   code.  For device side one can use `thrust::transform_iterator` instead.
+ */
+template <typename Fn>
+class IndexTransformIter {
+  size_t iter_{0};
+  Fn fn_;
+
+ public:
+  using iterator_category = std::random_access_iterator_tag;  // NOLINT
+  using value_type = std::result_of_t<Fn(size_t)>;            // NOLINT
+  using difference_type = detail::ptrdiff_t;                  // NOLINT
+  using reference = std::add_lvalue_reference_t<value_type>;  // NOLINT
+  using pointer = std::add_pointer_t<value_type>;             // NOLINT
+
+ public:
+  /**
+   * \param op Transform operator, takes a size_t index as input.
+   */
+  explicit IndexTransformIter(Fn &&op) : fn_{op} {}
+  IndexTransformIter(IndexTransformIter const &) = default;
+  IndexTransformIter& operator=(IndexTransformIter&&) = default;
+  IndexTransformIter& operator=(IndexTransformIter const& that) {
+    iter_ = that.iter_;
+    return *this;
+  }
+
+  value_type operator*() const { return fn_(iter_); }
+
+  auto operator-(IndexTransformIter const &that) const { return iter_ - that.iter_; }
+  bool operator==(IndexTransformIter const &that) const { return iter_ == that.iter_; }
+  bool operator!=(IndexTransformIter const &that) const { return !(*this == that); }
+
+  IndexTransformIter &operator++() {
+    iter_++;
+    return *this;
+  }
+  IndexTransformIter operator++(int) {
+    auto ret = *this;
+    ++(*this);
+    return ret;
+  }
+  IndexTransformIter &operator+=(difference_type n) {
+    iter_ += n;
+    return *this;
+  }
+  IndexTransformIter &operator-=(difference_type n) {
+    (*this) += -n;
+    return *this;
+  }
+  IndexTransformIter operator+(difference_type n) const {
+    auto ret = *this;
+    return ret += n;
+  }
+  IndexTransformIter operator-(difference_type n) const {
+    auto ret = *this;
+    return ret -= n;
+  }
+};
+
+template <typename Fn>
+auto MakeIndexTransformIter(Fn&& fn) {
+  return IndexTransformIter<Fn>(std::forward<Fn>(fn));
+}
+
 int AllVisibleGPUs();
 
 inline void AssertGPUSupport() {
@@ -178,6 +246,16 @@ inline void AssertOneAPISupport() {
 #endif  // XGBOOST_USE_ONEAPI
 }
 
+void SetDevice(std::int32_t device);
+
+#if !defined(XGBOOST_USE_CUDA)
+inline void SetDevice(std::int32_t device) {
+  if (device >= 0) {
+    AssertGPUSupport();
+  }
+}
+#endif
+
 template <typename Idx, typename Container,
           typename V = typename Container::value_type,
           typename Comp = std::less<V>>
@@ -191,13 +269,47 @@ std::vector<Idx> ArgSort(Container const &array, Comp comp = std::less<V>{}) {
 
 struct OptionalWeights {
   Span<float const> weights;
-  float dft{1.0f};
+  float dft{1.0f};  // fixme: make this compile time constant
 
   explicit OptionalWeights(Span<float const> w) : weights{w} {}
   explicit OptionalWeights(float w) : dft{w} {}
 
   XGBOOST_DEVICE float operator[](size_t i) const { return weights.empty() ? dft : weights[i]; }
+  auto Empty() const { return weights.empty(); }
 };
+
+/**
+ * Last index of a group in a CSR style of index pointer.
+ */
+template <typename Indexable>
+XGBOOST_DEVICE size_t LastOf(size_t group, Indexable const &indptr) {
+  return indptr[group + 1] - 1;
+}
+
+/**
+ * \brief A CRTP (curiously recurring template pattern) helper function.
+ *
+ * https://www.fluentcpp.com/2017/05/19/crtp-helper/
+ *
+ * Does two things:
+ * 1. Makes "crtp" explicit in the inheritance structure of a CRTP base class.
+ * 2. Avoids having to `static_cast` in a lot of places.
+ *
+ * \tparam T The derived class in a CRTP hierarchy.
+ */
+template <typename T>
+struct Crtp {
+  T &Underlying() { return static_cast<T &>(*this); }
+  T const &Underlying() const { return static_cast<T const &>(*this); }
+};
+
+/**
+ * \brief C++17 std::as_const
+ */
+template <typename T>
+typename std::add_const<T>::type &AsConst(T &v) noexcept {  // NOLINT(runtime/references)
+  return v;
+}
 }  // namespace common
 }  // namespace xgboost
 #endif  // XGBOOST_COMMON_COMMON_H_

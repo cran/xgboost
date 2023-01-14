@@ -8,25 +8,22 @@
 #include <limits>
 #include <vector>
 
+#include "../../collective/communicator-inl.h"
 #include "../../common/hist_util.h"
 #include "../../data/gradient_index.h"
 #include "expand_entry.h"
-#include "rabit/rabit.h"
 #include "xgboost/tree_model.h"
 
 namespace xgboost {
 namespace tree {
-template <typename GradientSumT, typename ExpandEntry> class HistogramBuilder {
-  using GradientPairT = xgboost::detail::GradientPairInternal<GradientSumT>;
-  using GHistRowT = common::GHistRow<GradientSumT>;
-
+template <typename ExpandEntry>
+class HistogramBuilder {
   /*! \brief culmulative histogram of gradients. */
-  common::HistCollection<GradientSumT> hist_;
+  common::HistCollection hist_;
   /*! \brief culmulative local parent histogram of gradients. */
-  common::HistCollection<GradientSumT> hist_local_worker_;
-  common::GHistBuilder<GradientSumT> builder_;
-  common::ParallelGHistBuilder<GradientSumT> buffer_;
-  rabit::Reducer<GradientPairT, GradientPairT::Reduce> reducer_;
+  common::HistCollection hist_local_worker_;
+  common::GHistBuilder builder_;
+  common::ParallelGHistBuilder buffer_;
   BatchParam param_;
   int32_t n_threads_{-1};
   size_t n_batches_{0};
@@ -51,8 +48,10 @@ template <typename GradientSumT, typename ExpandEntry> class HistogramBuilder {
     hist_.Init(total_bins);
     hist_local_worker_.Init(total_bins);
     buffer_.Init(total_bins);
-    builder_ = common::GHistBuilder<GradientSumT>(total_bins);
+    builder_ = common::GHistBuilder(total_bins);
     is_distributed_ = is_distributed;
+    // Workaround s390x gcc 7.5.0
+    auto DMLC_ATTRIBUTE_UNUSED __force_instantiation = &GradientPairPrecise::Reduce;
   }
 
   template <bool any_missing>
@@ -60,11 +59,12 @@ template <typename GradientSumT, typename ExpandEntry> class HistogramBuilder {
                             GHistIndexMatrix const &gidx,
                             std::vector<ExpandEntry> const &nodes_for_explicit_hist_build,
                             common::RowSetCollection const &row_set_collection,
-                            const std::vector<GradientPair> &gpair_h) {
+                            const std::vector<GradientPair> &gpair_h,
+                            bool force_read_by_column) {
     const size_t n_nodes = nodes_for_explicit_hist_build.size();
     CHECK_GT(n_nodes, 0);
 
-    std::vector<GHistRowT> target_hists(n_nodes);
+    std::vector<common::GHistRow> target_hists(n_nodes);
     for (size_t i = 0; i < n_nodes; ++i) {
       const int32_t nid = nodes_for_explicit_hist_build[i].nid;
       target_hists[i] = hist_[nid];
@@ -87,7 +87,8 @@ template <typename GradientSumT, typename ExpandEntry> class HistogramBuilder {
                                                     elem.begin + end_of_row_set, nid);
       auto hist = buffer_.GetInitializedHist(tid, nid_in_set);
       if (rid_set.Size() != 0) {
-        builder_.template BuildHist<any_missing>(gpair_h, rid_set, gidx, hist);
+        builder_.template BuildHist<any_missing>(gpair_h, rid_set, gidx, hist,
+                                                 force_read_by_column);
       }
     });
   }
@@ -113,7 +114,8 @@ template <typename GradientSumT, typename ExpandEntry> class HistogramBuilder {
                  RegTree *p_tree, common::RowSetCollection const &row_set_collection,
                  std::vector<ExpandEntry> const &nodes_for_explicit_hist_build,
                  std::vector<ExpandEntry> const &nodes_for_subtraction_trick,
-                 std::vector<GradientPair> const &gpair) {
+                 std::vector<GradientPair> const &gpair,
+                 bool force_read_by_column = false) {
     int starting_index = std::numeric_limits<int>::max();
     int sync_count = 0;
     if (page_id == 0) {
@@ -124,11 +126,13 @@ template <typename GradientSumT, typename ExpandEntry> class HistogramBuilder {
     if (gidx.IsDense()) {
       this->BuildLocalHistograms<false>(page_id, space, gidx,
                                         nodes_for_explicit_hist_build,
-                                        row_set_collection, gpair);
+                                        row_set_collection, gpair,
+                                        force_read_by_column);
     } else {
       this->BuildLocalHistograms<true>(page_id, space, gidx,
                                        nodes_for_explicit_hist_build,
-                                       row_set_collection, gpair);
+                                       row_set_collection, gpair,
+                                       force_read_by_column);
     }
 
     CHECK_GE(n_batches_, 1);
@@ -141,9 +145,7 @@ template <typename GradientSumT, typename ExpandEntry> class HistogramBuilder {
                                      nodes_for_subtraction_trick,
                                      starting_index, sync_count);
     } else {
-      this->SyncHistogramLocal(p_tree, nodes_for_explicit_hist_build,
-                               nodes_for_subtraction_trick, starting_index,
-                               sync_count);
+      this->SyncHistogramLocal(p_tree, nodes_for_explicit_hist_build, nodes_for_subtraction_trick);
     }
   }
   /** same as the other build hist but handles only single batch data (in-core) */
@@ -151,7 +153,8 @@ template <typename GradientSumT, typename ExpandEntry> class HistogramBuilder {
                  common::RowSetCollection const &row_set_collection,
                  std::vector<ExpandEntry> const &nodes_for_explicit_hist_build,
                  std::vector<ExpandEntry> const &nodes_for_subtraction_trick,
-                 std::vector<GradientPair> const &gpair) {
+                 std::vector<GradientPair> const &gpair,
+                 bool force_read_by_column = false) {
     const size_t n_nodes = nodes_for_explicit_hist_build.size();
     // create space of size (# rows in each node)
     common::BlockedSpace2d space(
@@ -163,7 +166,7 @@ template <typename GradientSumT, typename ExpandEntry> class HistogramBuilder {
         256);
     this->BuildHist(page_id, space, gidx, p_tree, row_set_collection,
                     nodes_for_explicit_hist_build, nodes_for_subtraction_trick,
-                    gpair);
+                    gpair, force_read_by_column);
   }
 
   void SyncHistogramDistributed(
@@ -199,8 +202,9 @@ template <typename GradientSumT, typename ExpandEntry> class HistogramBuilder {
           }
         });
 
-    reducer_.Allreduce(this->hist_[starting_index].data(),
-                       builder_.GetNumBins() * sync_count);
+    collective::Allreduce<collective::Operation::kSum>(
+        reinterpret_cast<double *>(this->hist_[starting_index].data()),
+        builder_.GetNumBins() * sync_count * 2);
 
     ParallelSubtractionHist(space, nodes_for_explicit_hist_build,
                             nodes_for_subtraction_trick, p_tree);
@@ -212,11 +216,9 @@ template <typename GradientSumT, typename ExpandEntry> class HistogramBuilder {
                             nodes_for_explicit_hist_build, p_tree);
   }
 
-  void SyncHistogramLocal(
-      RegTree *p_tree,
-      std::vector<ExpandEntry> const &nodes_for_explicit_hist_build,
-      std::vector<ExpandEntry> const &nodes_for_subtraction_trick,
-      int starting_index, int sync_count) {
+  void SyncHistogramLocal(RegTree *p_tree,
+                          std::vector<ExpandEntry> const &nodes_for_explicit_hist_build,
+                          std::vector<ExpandEntry> const &nodes_for_subtraction_trick) {
     const size_t nbins = this->builder_.GetNumBins();
     common::BlockedSpace2d space(
         nodes_for_explicit_hist_build.size(), [&](size_t) { return nbins; },
@@ -243,9 +245,7 @@ template <typename GradientSumT, typename ExpandEntry> class HistogramBuilder {
 
  public:
   /* Getters for tests. */
-  common::HistCollection<GradientSumT> const& Histogram() {
-    return hist_;
-  }
+  common::HistCollection const &Histogram() { return hist_; }
   auto& Buffer() { return buffer_; }
 
  private:

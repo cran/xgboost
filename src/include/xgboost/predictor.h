@@ -102,13 +102,10 @@ class PredictionContainer {
  */
 class Predictor {
  protected:
-  /*
-   * \brief Runtime parameters.
-   */
-  GenericParameter const* ctx_;
+  Context const* ctx_;
 
  public:
-  explicit Predictor(GenericParameter const* ctx) : ctx_{ctx} {}
+  explicit Predictor(Context const* ctx) : ctx_{ctx} {}
 
   virtual ~Predictor() = default;
 
@@ -145,7 +142,9 @@ class Predictor {
 
   /**
    * \brief Inplace prediction.
-   * \param           x                      Type erased data adapter.
+   *
+   * \param           p_fmat                 A proxy DMatrix that contains the data and related
+   *                                         meta info.
    * \param           model                  The model to predict from.
    * \param           missing                Missing value in the data.
    * \param [in,out]  out_preds              The output preds.
@@ -154,11 +153,9 @@ class Predictor {
    *
    * \return True if the data can be handled by current predictor, false otherwise.
    */
-  virtual bool InplacePredict(dmlc::any const &x, std::shared_ptr<DMatrix> p_m,
-                              const gbm::GBTreeModel &model, float missing,
-                              PredictionCacheEntry *out_preds,
-                              uint32_t tree_begin = 0,
-                              uint32_t tree_end = 0) const = 0;
+  virtual bool InplacePredict(std::shared_ptr<DMatrix> p_fmat, const gbm::GBTreeModel& model,
+                              float missing, PredictionCacheEntry* out_preds,
+                              uint32_t tree_begin = 0, uint32_t tree_end = 0) const = 0;
   /**
    * \brief online prediction function, predict score for one instance at a time
    * NOTE: use the batch prediction interface if possible, batch prediction is
