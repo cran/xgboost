@@ -2,7 +2,7 @@
 
 AC_PREREQ(2.69)
 
-AC_INIT([xgboost],[1.7.3],[],[xgboost],[])
+AC_INIT([xgboost],[1.7.5],[],[xgboost],[])
 
 : ${R_HOME=`R RHOME`}
 if test -z "${R_HOME}"; then
@@ -10,9 +10,9 @@ if test -z "${R_HOME}"; then
   exit 1
 fi
 
-CXX14=`"${R_HOME}/bin/R" CMD config CXX14`
-CXX14STD=`"${R_HOME}/bin/R" CMD config CXX14STD`
-CXX="${CXX14} ${CXX14STD}"
+CXX17=`"${R_HOME}/bin/R" CMD config CXX17`
+CXX17STD=`"${R_HOME}/bin/R" CMD config CXX17STD`
+CXX="${CXX17} ${CXX17STD}"
 CXXFLAGS=`"${R_HOME}/bin/R" CMD config CXXFLAGS`
 
 CC=`"${R_HOME}/bin/R" CMD config CC`
@@ -55,7 +55,7 @@ then
   ac_pkg_openmp=no
   AC_MSG_CHECKING([whether OpenMP will work in a package])
   AC_LANG_CONFTEST([AC_LANG_PROGRAM([[#include <omp.h>]], [[ return (omp_get_max_threads() <= 1); ]])])
-  ${CC} -o conftest conftest.c ${CPPFLAGS} ${LDFLAGS} ${OPENMP_LIB} ${OPENMP_CXXFLAGS} 2>/dev/null && ./conftest && ac_pkg_openmp=yes
+  ${CXX} -o conftest conftest.cpp ${CPPFLAGS} ${LDFLAGS} ${OPENMP_LIB} ${OPENMP_CXXFLAGS} 2>/dev/null && ./conftest && ac_pkg_openmp=yes
   AC_MSG_RESULT([${ac_pkg_openmp}])
   if test "${ac_pkg_openmp}" = no; then
     OPENMP_CXXFLAGS=''

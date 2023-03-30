@@ -58,6 +58,13 @@ void GetCutsFromRef(std::shared_ptr<DMatrix> ref_, bst_feature_t n_features, Bat
     }
   };
   auto ellpack = [&]() {
+    // workaround ellpack being initialized from CPU.
+    if (p.gpu_id == Context::kCpuId) {
+      p.gpu_id = ref_->Ctx()->gpu_id;
+    }
+    if (p.gpu_id == Context::kCpuId) {
+      p.gpu_id = 0;
+    }
     for (auto const& page : ref_->GetBatches<EllpackPage>(p)) {
       GetCutsFromEllpack(page, p_cuts);
       break;
@@ -103,6 +110,7 @@ void IterativeDMatrix::InitFromCPU(DataIterHandle iter_handle, float missing,
       size_t n_threads = ctx_.Threads();
       size_t n_features = column_sizes.size();
       linalg::Tensor<size_t, 2> column_sizes_tloc({n_threads, n_features}, Context::kCpuId);
+      column_sizes_tloc.Data()->Fill(0);
       auto view = column_sizes_tloc.HostView();
       common::ParallelFor(value.Size(), n_threads, common::Sched::Static(256), [&](auto i) {
         auto const& line = value.GetLine(i);
@@ -172,9 +180,9 @@ void IterativeDMatrix::InitFromCPU(DataIterHandle iter_handle, float missing,
     size_t i = 0;
     while (iter.Next()) {
       if (!p_sketch) {
-        p_sketch.reset(new common::HostSketchContainer{batch_param_.max_bin,
-                                                       proxy->Info().feature_types.ConstHostSpan(),
-                                                       column_sizes, false, ctx_.Threads()});
+        p_sketch.reset(new common::HostSketchContainer{
+            batch_param_.max_bin, proxy->Info().feature_types.ConstHostSpan(), column_sizes,
+            !proxy->Info().group_ptr_.empty(), ctx_.Threads()});
       }
       HostAdapterDispatch(proxy, [&](auto const& batch) {
         proxy->Info().num_nonzero_ = batch_nnz[i];

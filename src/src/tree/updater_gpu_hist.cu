@@ -188,7 +188,8 @@ struct GPUHistMakerDevice {
   common::Span<GradientPair> gpair;
 
   dh::device_vector<int> monotone_constraints;
-  dh::device_vector<float> update_predictions;
+  // node idx for each sample
+  dh::device_vector<bst_node_t> positions;
 
   TrainParam param;
 
@@ -305,6 +306,8 @@ struct GPUHistMakerDevice {
         matrix.is_dense
     };
     dh::TemporaryArray<GPUExpandEntry> entries(2 * candidates.size());
+    // Store the feature set ptrs so they dont go out of scope before the kernel is called
+    std::vector<std::shared_ptr<HostDeviceVector<bst_feature_t>>> feature_sets;
     for (size_t i = 0; i < candidates.size(); i++) {
       auto candidate = candidates.at(i);
       int left_nidx = tree[candidate.nid].LeftChild();
@@ -313,29 +316,34 @@ struct GPUHistMakerDevice {
       nidx[i * 2 + 1] = right_nidx;
       auto left_sampled_features = column_sampler.GetFeatureSet(tree.GetDepth(left_nidx));
       left_sampled_features->SetDevice(ctx_->gpu_id);
+      feature_sets.emplace_back(left_sampled_features);
       common::Span<bst_feature_t> left_feature_set =
           interaction_constraints.Query(left_sampled_features->DeviceSpan(), left_nidx);
       auto right_sampled_features = column_sampler.GetFeatureSet(tree.GetDepth(right_nidx));
       right_sampled_features->SetDevice(ctx_->gpu_id);
+      feature_sets.emplace_back(right_sampled_features);
       common::Span<bst_feature_t> right_feature_set =
-          interaction_constraints.Query(right_sampled_features->DeviceSpan(), left_nidx);
-      h_node_inputs[i * 2] = {left_nidx, candidate.depth + 1, candidate.split.left_sum,
-                              left_feature_set, hist.GetNodeHistogram(left_nidx)};
-      h_node_inputs[i * 2 + 1] = {right_nidx, candidate.depth + 1, candidate.split.right_sum,
-                                  right_feature_set, hist.GetNodeHistogram(right_nidx)};
+          interaction_constraints.Query(right_sampled_features->DeviceSpan(),
+                                        right_nidx);
+      h_node_inputs[i * 2] = {left_nidx, candidate.depth + 1,
+                              candidate.split.left_sum, left_feature_set,
+                              hist.GetNodeHistogram(left_nidx)};
+      h_node_inputs[i * 2 + 1] = {right_nidx, candidate.depth + 1,
+                                  candidate.split.right_sum, right_feature_set,
+                                  hist.GetNodeHistogram(right_nidx)};
     }
-    bst_feature_t number_active_features = h_node_inputs[0].feature_set.size();
+    bst_feature_t max_active_features = 0;
     for (auto input : h_node_inputs) {
-      CHECK_EQ(input.feature_set.size(), number_active_features)
-          << "Current implementation assumes that the number of active features "
-             "(after sampling) in any node is the same";
+      max_active_features = std::max(max_active_features,
+                                     bst_feature_t(input.feature_set.size()));
     }
-    dh::safe_cuda(cudaMemcpyAsync(d_node_inputs.data().get(), h_node_inputs.data(),
-                                  h_node_inputs.size() * sizeof(EvaluateSplitInputs),
-                                  cudaMemcpyDefault));
+    dh::safe_cuda(cudaMemcpyAsync(
+        d_node_inputs.data().get(), h_node_inputs.data(),
+        h_node_inputs.size() * sizeof(EvaluateSplitInputs), cudaMemcpyDefault));
 
-    this->evaluator_.EvaluateSplits(nidx, number_active_features, dh::ToSpan(d_node_inputs),
-                                    shared_inputs, dh::ToSpan(entries));
+    this->evaluator_.EvaluateSplits(nidx, max_active_features,
+                                    dh::ToSpan(d_node_inputs), shared_inputs,
+                                    dh::ToSpan(entries));
     dh::safe_cuda(cudaMemcpyAsync(pinned_candidates_out.data(),
                                   entries.data().get(), sizeof(GPUExpandEntry) * entries.size(),
                                   cudaMemcpyDeviceToHost));
@@ -423,7 +431,7 @@ struct GPUHistMakerDevice {
         LOG(FATAL) << "Current objective function can not be used with external memory.";
       }
       p_out_position->Resize(0);
-      update_predictions.clear();
+      positions.clear();
       return;
     }
 
@@ -458,8 +466,6 @@ struct GPUHistMakerDevice {
                               HostDeviceVector<bst_node_t>* p_out_position) {
     auto d_matrix = page->GetDeviceAccessor(ctx_->gpu_id);
     auto d_gpair = this->gpair;
-    update_predictions.resize(row_partitioner->GetRows().size());
-    auto d_update_predictions = dh::ToSpan(update_predictions);
     p_out_position->SetDevice(ctx_->gpu_id);
     p_out_position->Resize(row_partitioner->GetRows().size());
 
@@ -494,32 +500,45 @@ struct GPUHistMakerDevice {
         node = d_nodes[position];
       }
 
-      d_update_predictions[row_id] = node.LeafValue();
       return position;
     };  // NOLINT
 
     auto d_out_position = p_out_position->DeviceSpan();
     row_partitioner->FinalisePosition(d_out_position, new_position_op);
 
+    auto s_position = p_out_position->ConstDeviceSpan();
+    positions.resize(s_position.size());
+    dh::safe_cuda(cudaMemcpyAsync(positions.data().get(), s_position.data(),
+                                  s_position.size_bytes(), cudaMemcpyDeviceToDevice));
+
     dh::LaunchN(row_partitioner->GetRows().size(), [=] __device__(size_t idx) {
       bst_node_t position = d_out_position[idx];
-      d_update_predictions[idx] = d_nodes[position].LeafValue();
       bool is_row_sampled = d_gpair[idx].GetHess() - .0f == 0.f;
       d_out_position[idx] = is_row_sampled ? ~position : position;
     });
   }
 
   bool UpdatePredictionCache(linalg::VectorView<float> out_preds_d, RegTree const* p_tree) {
-    if (update_predictions.empty()) {
+    if (positions.empty()) {
       return false;
     }
+
     CHECK(p_tree);
     dh::safe_cuda(cudaSetDevice(ctx_->gpu_id));
     CHECK_EQ(out_preds_d.DeviceIdx(), ctx_->gpu_id);
-    auto d_update_predictions = dh::ToSpan(update_predictions);
-    CHECK_EQ(out_preds_d.Size(), d_update_predictions.size());
-    dh::LaunchN(out_preds_d.Size(), [=] XGBOOST_DEVICE(size_t idx) mutable {
-      out_preds_d(idx) += d_update_predictions[idx];
+
+    auto d_position = dh::ToSpan(positions);
+    CHECK_EQ(out_preds_d.Size(), d_position.size());
+
+    auto const& h_nodes = p_tree->GetNodes();
+    dh::caching_device_vector<RegTree::Node> nodes(h_nodes.size());
+    dh::safe_cuda(cudaMemcpyAsync(nodes.data().get(), h_nodes.data(),
+                                  h_nodes.size() * sizeof(RegTree::Node), cudaMemcpyHostToDevice));
+    auto d_nodes = dh::ToSpan(nodes);
+    dh::LaunchN(d_position.size(), [=] XGBOOST_DEVICE(std::size_t idx) mutable {
+      bst_node_t nidx = d_position[idx];
+      auto weight = d_nodes[nidx].LeafValue();
+      out_preds_d(idx) += weight;
     });
     return true;
   }
@@ -862,6 +881,7 @@ class GPUHistMaker : public TreeUpdater {
   std::unique_ptr<GPUHistMakerDevice<GradientSumT>> maker;  // NOLINT
 
   char const* Name() const override { return "grow_gpu_hist"; }
+  bool HasNodePosition() const override { return true; }
 
  private:
   bool initialised_{false};
