@@ -2,9 +2,13 @@
 require(xgboost)
 require(Matrix)
 require(data.table)
-if (!require('vcd')) install.packages('vcd')
+if (!require('vcd')) {
+  install.packages('vcd')
+}
 
-## ---- results='hide'----------------------------------------------------------
+data.table::setDTthreads(2)
+
+## ----results='hide'-----------------------------------------------------------
 data(Arthritis)
 df <- data.table(Arthritis, keep.rownames = FALSE)
 
@@ -20,13 +24,13 @@ head(df[,AgeDiscret := as.factor(round(Age/10,0))])
 ## -----------------------------------------------------------------------------
 head(df[,AgeCat:= as.factor(ifelse(Age > 30, "Old", "Young"))])
 
-## ---- results='hide'----------------------------------------------------------
+## ----results='hide'-----------------------------------------------------------
 df[,ID:=NULL]
 
 ## -----------------------------------------------------------------------------
 levels(df[,Treatment])
 
-## ---- warning=FALSE,message=FALSE---------------------------------------------
+## ----warning=FALSE,message=FALSE----------------------------------------------
 sparse_matrix <- sparse.model.matrix(Improved ~ ., data = df)[,-1]
 head(sparse_matrix)
 
@@ -50,30 +54,47 @@ importanceClean <- importanceRaw[,`:=`(Cover=NULL, Frequency=NULL)]
 
 head(importanceClean)
 
-## ---- fig.width=8, fig.height=5, fig.align='center'---------------------------
+## ----fig.width=8, fig.height=5, fig.align='center'----------------------------
 xgb.plot.importance(importance_matrix = importance)
 
-## ---- warning=FALSE, message=FALSE--------------------------------------------
+## ----warning=FALSE, message=FALSE---------------------------------------------
 c2 <- chisq.test(df$Age, output_vector)
 print(c2)
 
-## ---- warning=FALSE, message=FALSE--------------------------------------------
+## ----warning=FALSE, message=FALSE---------------------------------------------
 c2 <- chisq.test(df$AgeDiscret, output_vector)
 print(c2)
 
-## ---- warning=FALSE, message=FALSE--------------------------------------------
+## ----warning=FALSE, message=FALSE---------------------------------------------
 c2 <- chisq.test(df$AgeCat, output_vector)
 print(c2)
 
-## ---- warning=FALSE, message=FALSE--------------------------------------------
+## ----warning=FALSE, message=FALSE---------------------------------------------
 data(agaricus.train, package='xgboost')
 data(agaricus.test, package='xgboost')
 train <- agaricus.train
 test <- agaricus.test
 
 #Random Forest - 1000 trees
-bst <- xgboost(data = train$data, label = train$label, max_depth = 4, num_parallel_tree = 1000, subsample = 0.5, colsample_bytree =0.5, nrounds = 1, objective = "binary:logistic")
+bst <- xgboost(
+    data = train$data,
+    label = train$label,
+    max_depth = 4,
+    num_parallel_tree = 1000,
+    subsample = 0.5,
+    colsample_bytree = 0.5,
+    nrounds = 1,
+    objective = "binary:logistic",
+    nthread = 2
+)
 
 #Boosting - 3 rounds
-bst <- xgboost(data = train$data, label = train$label, max_depth = 4, nrounds = 3, objective = "binary:logistic")
+bst <- xgboost(
+    data = train$data,
+    label = train$label,
+    max_depth = 4,
+    nrounds = 3,
+    objective = "binary:logistic",
+    nthread = 2
+)
 

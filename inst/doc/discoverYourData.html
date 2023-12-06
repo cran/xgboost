@@ -375,10 +375,14 @@ presentation</a>). We will explain how to use <strong>XGBoost</strong>
 to highlight the <em>link</em> between the <em>features</em> of your
 data and the <em>outcome</em>.</p>
 <p>Package loading:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">require</span>(xgboost)</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">require</span>(Matrix)</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">require</span>(data.table)</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">require</span>(<span class="st">&#39;vcd&#39;</span>)) <span class="fu">install.packages</span>(<span class="st">&#39;vcd&#39;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">require</span>(xgboost)</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="fu">require</span>(Matrix)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="fu">require</span>(data.table)</span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">require</span>(<span class="st">&#39;vcd&#39;</span>)) {</span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a>  <span class="fu">install.packages</span>(<span class="st">&#39;vcd&#39;</span>)</span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a>}</span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a>data.table<span class="sc">::</span><span class="fu">setDTthreads</span>(<span class="dv">2</span>)</span></code></pre></div>
 <blockquote>
 <p><strong>VCD</strong> package is used for one of its embedded dataset
 only.</p>
@@ -420,8 +424,8 @@ features.</p>
 <p>The method we are going to see is usually called <a href="https://en.wikipedia.org/wiki/One-hot">one-hot encoding</a>.</p>
 <p>The first step is to load <code>Arthritis</code> dataset in memory
 and wrap it with <code>data.table</code> package.</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">data</span>(Arthritis)</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">data.table</span>(Arthritis, <span class="at">keep.rownames =</span> <span class="cn">FALSE</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">data</span>(Arthritis)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">data.table</span>(Arthritis, <span class="at">keep.rownames =</span> <span class="cn">FALSE</span>)</span></code></pre></div>
 <blockquote>
 <p><code>data.table</code> is 100% compliant with <strong>R</strong>
 <code>data.frame</code> but its syntax is more consistent and its
@@ -433,7 +437,7 @@ Some parts of <strong>XGBoost</strong> <strong>R</strong> package use
 </blockquote>
 <p>The first thing we want to do is to have a look to the first few
 lines of the <code>data.table</code>:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df)</span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="fu">head</span>(df)</span></code></pre></div>
 <pre><code>##    ID Treatment  Sex Age Improved
 ## 1: 57   Treated Male  27     Some
 ## 2: 46   Treated Male  29     None
@@ -442,7 +446,7 @@ lines of the <code>data.table</code>:</p>
 ## 5: 36   Treated Male  46   Marked
 ## 6: 23   Treated Male  58   Marked</code></pre>
 <p>Now we will check the format of each column.</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">str</span>(df)</span></code></pre></div>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="fu">str</span>(df)</span></code></pre></div>
 <pre><code>## Classes &#39;data.table&#39; and &#39;data.frame&#39;:   84 obs. of  5 variables:
 ##  $ ID       : int  57 46 77 17 36 23 75 39 33 55 ...
 ##  $ Treatment: Factor w/ 2 levels &quot;Placebo&quot;,&quot;Treated&quot;: 2 2 2 2 2 2 2 2 2 2 ...
@@ -476,7 +480,7 @@ age.</p>
 treat these age groups as independent values.</p>
 <p>Therefore, 20 is not closer to 30 than 60. To make it short, the
 distance between ages is lost in this transformation.</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df[,<span class="at">AgeDiscret :=</span> <span class="fu">as.factor</span>(<span class="fu">round</span>(Age<span class="sc">/</span><span class="dv">10</span>,<span class="dv">0</span>))])</span></code></pre></div>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="fu">head</span>(df[,<span class="at">AgeDiscret :=</span> <span class="fu">as.factor</span>(<span class="fu">round</span>(Age<span class="sc">/</span><span class="dv">10</span>,<span class="dv">0</span>))])</span></code></pre></div>
 <pre><code>##    ID Treatment  Sex Age Improved AgeDiscret
 ## 1: 57   Treated Male  27     Some          3
 ## 2: 46   Treated Male  29     None          3
@@ -493,7 +497,7 @@ arbitrary split at 30 years old. We choose this value <strong>based on
 nothing</strong>. We will see later if simplifying the information based
 on arbitrary values is a good strategy (you may already have an idea of
 how well it will work…).</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df[,<span class="at">AgeCat:=</span> <span class="fu">as.factor</span>(<span class="fu">ifelse</span>(Age <span class="sc">&gt;</span> <span class="dv">30</span>, <span class="st">&quot;Old&quot;</span>, <span class="st">&quot;Young&quot;</span>))])</span></code></pre></div>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="fu">head</span>(df[,<span class="at">AgeCat:=</span> <span class="fu">as.factor</span>(<span class="fu">ifelse</span>(Age <span class="sc">&gt;</span> <span class="dv">30</span>, <span class="st">&quot;Old&quot;</span>, <span class="st">&quot;Young&quot;</span>))])</span></code></pre></div>
 <pre><code>##    ID Treatment  Sex Age Improved AgeDiscret AgeCat
 ## 1: 57   Treated Male  27     Some          3  Young
 ## 2: 46   Treated Male  29     None          3  Young
@@ -520,10 +524,10 @@ this situation.</p>
 data</h5>
 <p>We remove ID as there is nothing to learn from this feature (it would
 just add some noise).</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>df[,ID<span class="sc">:</span><span class="er">=</span><span class="cn">NULL</span>]</span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a>df[,ID<span class="sc">:=</span><span class="cn">NULL</span>]</span></code></pre></div>
 <p>We will list the different values for the column
 <code>Treatment</code>:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">levels</span>(df[,Treatment])</span></code></pre></div>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="fu">levels</span>(df[,Treatment])</span></code></pre></div>
 <pre><code>## [1] &quot;Placebo&quot; &quot;Treated&quot;</code></pre>
 </div>
 </div>
@@ -551,8 +555,8 @@ encoding, as it would be absorbed into a common constant intercept
 column.</p>
 <p>Column <code>Improved</code> is excluded because it will be our
 <code>label</code> column, the one we want to predict.</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>sparse_matrix <span class="ot">&lt;-</span> <span class="fu">sparse.model.matrix</span>(Improved <span class="sc">~</span> ., <span class="at">data =</span> df)[,<span class="sc">-</span><span class="dv">1</span>]</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(sparse_matrix)</span></code></pre></div>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a>sparse_matrix <span class="ot">&lt;-</span> <span class="fu">sparse.model.matrix</span>(Improved <span class="sc">~</span> ., <span class="at">data =</span> df)[,<span class="sc">-</span><span class="dv">1</span>]</span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a><span class="fu">head</span>(sparse_matrix)</span></code></pre></div>
 <pre><code>## 6 x 9 sparse Matrix of class &quot;dgCMatrix&quot;
 ##   TreatmentTreated SexMale Age AgeDiscret3 AgeDiscret4 AgeDiscret5 AgeDiscret6
 ## 1                1       1  27           1           .           .           .
@@ -578,7 +582,7 @@ conversion). For more information, you can type
 </blockquote>
 <p>Create the output <code>numeric</code> vector (not as a sparse
 <code>Matrix</code>):</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>output_vector <span class="ot">=</span> df[,Improved] <span class="sc">==</span> <span class="st">&quot;Marked&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a>output_vector <span class="ot">=</span> df[,Improved] <span class="sc">==</span> <span class="st">&quot;Marked&quot;</span></span></code></pre></div>
 <ol style="list-style-type: decimal">
 <li>set <code>Y</code> vector to <code>0</code>;</li>
 <li>set <code>Y</code> to <code>1</code> for rows where
@@ -594,8 +598,8 @@ conversion). For more information, you can type
 the documentation of <code>xgboost</code> function (or at the vignette
 <a href="https://github.com/dmlc/xgboost/blob/master/R-package/vignettes/xgboostPresentation.Rmd">XGBoost
 presentation</a>).</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgboost</span>(<span class="at">data =</span> sparse_matrix, <span class="at">label =</span> output_vector, <span class="at">max_depth =</span> <span class="dv">4</span>,</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>               <span class="at">eta =</span> <span class="dv">1</span>, <span class="at">nthread =</span> <span class="dv">2</span>, <span class="at">nrounds =</span> <span class="dv">10</span>,<span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgboost</span>(<span class="at">data =</span> sparse_matrix, <span class="at">label =</span> output_vector, <span class="at">max_depth =</span> <span class="dv">4</span>,</span>
+<span id="cb17-2"><a href="#cb17-2" tabindex="-1"></a>               <span class="at">eta =</span> <span class="dv">1</span>, <span class="at">nthread =</span> <span class="dv">2</span>, <span class="at">nrounds =</span> <span class="dv">10</span>,<span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</span></code></pre></div>
 <pre><code>## [1]  train-logloss:0.485466 
 ## [2]  train-logloss:0.438534 
 ## [3]  train-logloss:0.412250 
@@ -631,8 +635,8 @@ importance</h2>
 importance data.table</h3>
 <p>Remember, each binary column corresponds to a single value of one of
 <em>categorical</em> features.</p>
-<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>importance <span class="ot">&lt;-</span> <span class="fu">xgb.importance</span>(<span class="at">feature_names =</span> <span class="fu">colnames</span>(sparse_matrix), <span class="at">model =</span> bst)</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(importance)</span></code></pre></div>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" tabindex="-1"></a>importance <span class="ot">&lt;-</span> <span class="fu">xgb.importance</span>(<span class="at">feature_names =</span> <span class="fu">colnames</span>(sparse_matrix), <span class="at">model =</span> bst)</span>
+<span id="cb19-2"><a href="#cb19-2" tabindex="-1"></a><span class="fu">head</span>(importance)</span></code></pre></div>
 <pre><code>##             Feature        Gain      Cover  Frequency
 ## 1:              Age 0.622031769 0.67251696 0.67241379
 ## 2: TreatmentTreated 0.285750540 0.11916651 0.10344828
@@ -671,13 +675,13 @@ from the illness?</p>
 class of the classification.</p>
 <p>For that purpose we will execute the same function as above but using
 two more parameters, <code>data</code> and <code>label</code>.</p>
-<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>importanceRaw <span class="ot">&lt;-</span> <span class="fu">xgb.importance</span>(<span class="at">feature_names =</span> <span class="fu">colnames</span>(sparse_matrix), <span class="at">model =</span> bst, <span class="at">data =</span> sparse_matrix, <span class="at">label =</span> output_vector)</span></code></pre></div>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" tabindex="-1"></a>importanceRaw <span class="ot">&lt;-</span> <span class="fu">xgb.importance</span>(<span class="at">feature_names =</span> <span class="fu">colnames</span>(sparse_matrix), <span class="at">model =</span> bst, <span class="at">data =</span> sparse_matrix, <span class="at">label =</span> output_vector)</span></code></pre></div>
 <pre><code>## Warning in xgb.importance(feature_names = colnames(sparse_matrix), model = bst,
 ## : xgb.importance: parameters &#39;data&#39;, &#39;label&#39; and &#39;target&#39; are deprecated</code></pre>
-<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Cleaning for better display</span></span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>importanceClean <span class="ot">&lt;-</span> importanceRaw[,<span class="st">`</span><span class="at">:=</span><span class="st">`</span>(<span class="at">Cover=</span><span class="cn">NULL</span>, <span class="at">Frequency=</span><span class="cn">NULL</span>)]</span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(importanceClean)</span></code></pre></div>
+<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" tabindex="-1"></a><span class="co"># Cleaning for better display</span></span>
+<span id="cb23-2"><a href="#cb23-2" tabindex="-1"></a>importanceClean <span class="ot">&lt;-</span> importanceRaw[,<span class="st">`</span><span class="at">:=</span><span class="st">`</span>(<span class="at">Cover=</span><span class="cn">NULL</span>, <span class="at">Frequency=</span><span class="cn">NULL</span>)]</span>
+<span id="cb23-3"><a href="#cb23-3" tabindex="-1"></a></span>
+<span id="cb23-4"><a href="#cb23-4" tabindex="-1"></a><span class="fu">head</span>(importanceClean)</span></code></pre></div>
 <pre><code>##             Feature        Gain
 ## 1:              Age 0.622031769
 ## 2: TreatmentTreated 0.285750540
@@ -719,8 +723,8 @@ looking for <code>1</code> for this feature.</p>
 feature importance</h3>
 <p>All these things are nice, but it would be even better to plot the
 results.</p>
-<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">xgb.plot.importance</span>(<span class="at">importance_matrix =</span> importance)</span></code></pre></div>
-<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAwAAAAHgCAMAAAAlhPoXAAAC7lBMVEUAAAABAQECAgIDAwMEBAQFBQUGBgYHBwcICAgJCQkKCgoLCwsMDAwNDQ0ODg4PDw8QEBARERESEhITExMUFBQVFRUWFhYXFxcYGBgZGRkaGhobGxscHBwdHR0eHh4fHx8gICAhISEiIiIjIyMkJCQlJSUmJiYnJycoKCgpKSkqKiorKyssLCwtLS0uLi4vLy8wMDAyMjIzMzM0NDQ1NTU2NjY3Nzc4ODg5OTk6Ojo7Ozs8PDw9PT0+Pj4/Pz9AQEBBQUFCQkJDQ0NERERFRUVGRkZHR0dISEhJSUlKSkpLS0tMTExNTU1OTk5PT09QUFBRUVFSUlJTU1NUVFRVVVVWVlZXV1dYWFhZWVlaWlpbW1tcXFxdXV1eXl5fX19gYGBhYWFiYmJjY2NkZGRlZWVmZmZnZ2dpaWlqampra2tsbGxtbW1ubm5vb29wcHBxcXFycnJzc3N0dHR1dXV2dnZ3d3d4eHh5eXl6enp7e3t8fHx9fX1+fn5/f3+AgICBgYGCgoKDg4OEhISFhYWGhoaHh4eIiIiJiYmKioqLi4uMjIyNjY2Ojo6Pj4+QkJCRkZGSkpKTk5OUlJSVlZWWlpaXl5eYmJiZmZmampqbm5ucnJydnZ2enp6fn5+goKChoaGioqKjo6OkpKSlpaWmpqanp6eoqKipqamqqqqrq6usrKyurq6vr6+wsLCxsbGysrKzs7O0tLS1tbW2tra3t7e4uLi5ubm6urq7u7u8vLy9vb2+vr6/v7/AwMDBwcHCwsLDw8PFxcXGxsbHx8fIyMjJycnKysrLy8vMzMzNzc3Ozs7Pz8/R0dHS0tLT09PU1NTV1dXX19fY2NjZ2dna2trb29vc3Nzd3d3e3t7f39/g4ODh4eHi4uLj4+Pk5OTl5eXm5ubn5+fo6Ojp6enq6urr6+vs7Ozt7e3u7u7v7+/w8PDx8fHy8vLz8/P09PT19fX29vb39/f4+Pj5+fn6+vr7+/v8/Pz9/f3+/v7////2es7SAAAACXBIWXMAAA7DAAAOwwHHb6hkAAASiUlEQVR4nO3deZwU5Z3H8WJABubgGlgOjRwGTDg1yK6bsLIxYrISvDCLV6JxhXVdREdJzIhKJBE1ispljByCuuzCIpAgrEFcD8gqwhqios5gZwQUFwUdmBng+W+rh24zzUwxRc3TU131/bxfL6rp7urfa6iuD91zwOMYQJgT9gcAhIkAII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AIC0eAbwAZPJ76hAAYsnvqUMAiCW/pw4BIJb8njoEgFjye+oQAGLJ76lDAIglv6cOASCW/J46BIBY8nvqEABiye+pQwCIJb+nDgEglvyeOgSAWPJ76uRuAJOcTb73DftoI+f4PXVyNoCqztdd7nvnsI82co7fUydnA1hwVkV+pXu5bnDHMePLzJvndur/G8+dwz7ayDl+z7OcDWDEE2ZMmTGJgoW1S1uVfdbjnpqtJ//Wa+ewjzZyjt/zLFcD2NLpC7O26wEzc4R75dyyp051L6aP9do77KONnOP3RMvVACa0KSkpceab0nHulevKftGmY8eORWd67R320UbO8Xui5WgA+4pWJxKJnw41DydfAUaXLRriXuz+0Gv3sI82co7fMy1HA5jbL7ndkbdhV+Hi6uV5ZZ90nVnz52FTvHYP+2gj5/g903I0gGFT6y5GX2h+N6DoonOmmS1/37n7pGqv3cM+2sg5fs+0HA3gS5VvuJtvz2lir7CPNnKO3xMs1wP4Y+Hmw2vav93EXmEfbeQcvydYrgdgHuvbfvCKpnYK+2gj5/g9v3I+AF/CPtrIOX5PHQJALPk9dQgAseT31CEAxJLfU4cAEEt+Tx0CQCz5PXUIALHk99QhAMSS31OHABBLfk+deAQABEQAkEYAkEYAkEYAkEYAkEYAkBaPAML+onMYwj7mMUEAURX2MY8JAoiqsI95TBBAVIV9zGOCAKIq7GMeEwQQVWEf85gggKgK+5jHBAFEVdjHPCYIIKrCPuYxQQBRFfYxjwkCiKqw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dfDHxiMAICACgDQCgDQCgDQCgDQCgDQCgDQCgDQCgDQCgDQCgDQCgLRIB7D49HbfWN/oFWtTjfl9O9tDa345oGDg3CN2h9b+vE/ByFebP/PYP37VV638qGn9qZ86SefbHWrWDm/X++eHT3hGlANY3urWVWPbvdnIFWtTjdncJb/5MzOH3lwwY+2UvF/ZHfqT9g+tGVvwjt2hrpsdGwFkTH3J+cWsWbNW2R36Qusfr5t+0vQTHhLlAAZeacyhIVc3csXa1NpH2lsJoP7QL066z91e28vq0KrCe4w52OkOq0NdrxR2tRFAxtTZxRZe/Y4dOmKcu7ntxF9WIhzAh85yd1vWreEVa1PNhqIZD1oIIGPozlvecrf3Oc39lwEZQ2s27na33UqbOfPY43jg9PsHWQggc+rEkabaQgLHPP8bgg2NcAAvOlvd7Xxnb4Mr1qaa3R+bmRYCaOSj+7sh1ofumZy/1fLQW4cfshFA5tSzzz4rr8OUZv/LoIyh65yNo1oVl0l9DrDKKXe3/+HsaHDF2tQkGwE0/OjmOCtsD33IccqaO/OYoZvabTU2AsiYeqS4w6zVN7S60erQp5xTJ6+a1OrEP7GKcAArnQp3u8xJNLhibWqSjQAaDF2QN9X60O2vP9C22W+BMoYe/PqdxkoAGVMPrfpfdzux9cc2hy50kkFd0/mEp0Q4gBed5BcAFjj7GlyxNjXJzlugzKG/bHWX/aGuKW2a++fPGHp7nx07d55+7c5DzRza2Ie62nnZ5tBlzloT6C/ACAdQ6ax0t3f0bHjF2tQkGwEcM/SmvNnNn5k5dNe85D83X+Jstzn0G85R5c0cmjl154Lk5+vLnbdsDt3irHa3S53KE50S4QDM16415vDQqxq5Ym2qsRNA5tDprZdZGJk59ANnpru9ukMz/n+EhkNffc7V+/vPVTV3aMbUHU7ynfr4U5r9WXD9oYd7XOlur+57wkOiHMCTTumaS9q5byjnX/D5X65YnWosBVB/6HttzpyZdNDmUPOjwofWTHQetfqR1t1g43OAzKlXFT78XxOdp+0OXeBM/v2trRaf8JAoB2Dm9Gk3PPmt8NLkl8LSV+xOtRRA/aGPpN5YNPsrthkf6YGpfdsOWdLskQ3++HYCyPxQy/rmD11qeah5alDbAQH+g6xIBwA0FwFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFA2v8Dxx/TzEb4CSQAAAAASUVORK5CYII=" style="display: block; margin: auto;" /></p>
+<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" tabindex="-1"></a><span class="fu">xgb.plot.importance</span>(<span class="at">importance_matrix =</span> importance)</span></code></pre></div>
+<p><img src="data:image/png;base64,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" style="display: block; margin: auto;" /></p>
 <p>Feature have automatically been divided in 2 clusters: the
 interesting features… and the others.</p>
 <blockquote>
@@ -746,8 +750,8 @@ make sense?</h3>
 <p>Let’s check some <strong>Chi2</strong> between each of these features
 and the label.</p>
 <p>Higher <strong>Chi2</strong> means better correlation.</p>
-<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>c2 <span class="ot">&lt;-</span> <span class="fu">chisq.test</span>(df<span class="sc">$</span>Age, output_vector)</span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(c2)</span></code></pre></div>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" tabindex="-1"></a>c2 <span class="ot">&lt;-</span> <span class="fu">chisq.test</span>(df<span class="sc">$</span>Age, output_vector)</span>
+<span id="cb26-2"><a href="#cb26-2" tabindex="-1"></a><span class="fu">print</span>(c2)</span></code></pre></div>
 <pre><code>## 
 ##  Pearson&#39;s Chi-squared test
 ## 
@@ -755,8 +759,8 @@ and the label.</p>
 ## X-squared = 35.475, df = 35, p-value = 0.4458</code></pre>
 <p>Pearson correlation between Age and illness disappearing is
 <strong>35.48</strong>.</p>
-<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>c2 <span class="ot">&lt;-</span> <span class="fu">chisq.test</span>(df<span class="sc">$</span>AgeDiscret, output_vector)</span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(c2)</span></code></pre></div>
+<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" tabindex="-1"></a>c2 <span class="ot">&lt;-</span> <span class="fu">chisq.test</span>(df<span class="sc">$</span>AgeDiscret, output_vector)</span>
+<span id="cb28-2"><a href="#cb28-2" tabindex="-1"></a><span class="fu">print</span>(c2)</span></code></pre></div>
 <pre><code>## 
 ##  Pearson&#39;s Chi-squared test
 ## 
@@ -764,8 +768,8 @@ and the label.</p>
 ## X-squared = 8.2554, df = 5, p-value = 0.1427</code></pre>
 <p>Our first simplification of Age gives a Pearson correlation is
 <strong>8.26</strong>.</p>
-<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>c2 <span class="ot">&lt;-</span> <span class="fu">chisq.test</span>(df<span class="sc">$</span>AgeCat, output_vector)</span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(c2)</span></code></pre></div>
+<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" tabindex="-1"></a>c2 <span class="ot">&lt;-</span> <span class="fu">chisq.test</span>(df<span class="sc">$</span>AgeCat, output_vector)</span>
+<span id="cb30-2"><a href="#cb30-2" tabindex="-1"></a><span class="fu">print</span>(c2)</span></code></pre></div>
 <pre><code>## 
 ##  Pearson&#39;s Chi-squared test with Yates&#39; continuity correction
 ## 
@@ -838,16 +842,33 @@ the one detected as important if you need to know all of them.</p>
 parameters!</p>
 <p>For instance, to compute a model with 1000 trees, with a 0.5 factor
 on sampling rows and columns:</p>
-<div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="fu">data</span>(agaricus.train, <span class="at">package=</span><span class="st">&#39;xgboost&#39;</span>)</span>
-<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="fu">data</span>(agaricus.test, <span class="at">package=</span><span class="st">&#39;xgboost&#39;</span>)</span>
-<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>train <span class="ot">&lt;-</span> agaricus.train</span>
-<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>test <span class="ot">&lt;-</span> agaricus.test</span>
-<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a><span class="co">#Random Forest - 1000 trees</span></span>
-<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgboost</span>(<span class="at">data =</span> train<span class="sc">$</span>data, <span class="at">label =</span> train<span class="sc">$</span>label, <span class="at">max_depth =</span> <span class="dv">4</span>, <span class="at">num_parallel_tree =</span> <span class="dv">1000</span>, <span class="at">subsample =</span> <span class="fl">0.5</span>, <span class="at">colsample_bytree =</span><span class="fl">0.5</span>, <span class="at">nrounds =</span> <span class="dv">1</span>, <span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</span></code></pre></div>
-<pre><code>## [1]  train-logloss:0.456035</code></pre>
-<div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="co">#Boosting - 3 rounds</span></span>
-<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgboost</span>(<span class="at">data =</span> train<span class="sc">$</span>data, <span class="at">label =</span> train<span class="sc">$</span>label, <span class="at">max_depth =</span> <span class="dv">4</span>, <span class="at">nrounds =</span> <span class="dv">3</span>, <span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" tabindex="-1"></a><span class="fu">data</span>(agaricus.train, <span class="at">package=</span><span class="st">&#39;xgboost&#39;</span>)</span>
+<span id="cb32-2"><a href="#cb32-2" tabindex="-1"></a><span class="fu">data</span>(agaricus.test, <span class="at">package=</span><span class="st">&#39;xgboost&#39;</span>)</span>
+<span id="cb32-3"><a href="#cb32-3" tabindex="-1"></a>train <span class="ot">&lt;-</span> agaricus.train</span>
+<span id="cb32-4"><a href="#cb32-4" tabindex="-1"></a>test <span class="ot">&lt;-</span> agaricus.test</span>
+<span id="cb32-5"><a href="#cb32-5" tabindex="-1"></a></span>
+<span id="cb32-6"><a href="#cb32-6" tabindex="-1"></a><span class="co">#Random Forest - 1000 trees</span></span>
+<span id="cb32-7"><a href="#cb32-7" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgboost</span>(</span>
+<span id="cb32-8"><a href="#cb32-8" tabindex="-1"></a>    <span class="at">data =</span> train<span class="sc">$</span>data,</span>
+<span id="cb32-9"><a href="#cb32-9" tabindex="-1"></a>    <span class="at">label =</span> train<span class="sc">$</span>label,</span>
+<span id="cb32-10"><a href="#cb32-10" tabindex="-1"></a>    <span class="at">max_depth =</span> <span class="dv">4</span>,</span>
+<span id="cb32-11"><a href="#cb32-11" tabindex="-1"></a>    <span class="at">num_parallel_tree =</span> <span class="dv">1000</span>,</span>
+<span id="cb32-12"><a href="#cb32-12" tabindex="-1"></a>    <span class="at">subsample =</span> <span class="fl">0.5</span>,</span>
+<span id="cb32-13"><a href="#cb32-13" tabindex="-1"></a>    <span class="at">colsample_bytree =</span> <span class="fl">0.5</span>,</span>
+<span id="cb32-14"><a href="#cb32-14" tabindex="-1"></a>    <span class="at">nrounds =</span> <span class="dv">1</span>,</span>
+<span id="cb32-15"><a href="#cb32-15" tabindex="-1"></a>    <span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>,</span>
+<span id="cb32-16"><a href="#cb32-16" tabindex="-1"></a>    <span class="at">nthread =</span> <span class="dv">2</span></span>
+<span id="cb32-17"><a href="#cb32-17" tabindex="-1"></a>)</span></code></pre></div>
+<pre><code>## [1]  train-logloss:0.455448</code></pre>
+<div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" tabindex="-1"></a><span class="co">#Boosting - 3 rounds</span></span>
+<span id="cb34-2"><a href="#cb34-2" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgboost</span>(</span>
+<span id="cb34-3"><a href="#cb34-3" tabindex="-1"></a>    <span class="at">data =</span> train<span class="sc">$</span>data,</span>
+<span id="cb34-4"><a href="#cb34-4" tabindex="-1"></a>    <span class="at">label =</span> train<span class="sc">$</span>label,</span>
+<span id="cb34-5"><a href="#cb34-5" tabindex="-1"></a>    <span class="at">max_depth =</span> <span class="dv">4</span>,</span>
+<span id="cb34-6"><a href="#cb34-6" tabindex="-1"></a>    <span class="at">nrounds =</span> <span class="dv">3</span>,</span>
+<span id="cb34-7"><a href="#cb34-7" tabindex="-1"></a>    <span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>,</span>
+<span id="cb34-8"><a href="#cb34-8" tabindex="-1"></a>    <span class="at">nthread =</span> <span class="dv">2</span></span>
+<span id="cb34-9"><a href="#cb34-9" tabindex="-1"></a>)</span></code></pre></div>
 <pre><code>## [1]  train-logloss:0.444882 
 ## [2]  train-logloss:0.302428 
 ## [3]  train-logloss:0.212847</code></pre>

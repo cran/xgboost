@@ -3,7 +3,7 @@
 #  drat:::addRepo("dmlc")
 #  install.packages("xgboost", repos="http://dmlc.ml/drat/", type = "source")
 
-## ---- eval=FALSE--------------------------------------------------------------
+## ----eval=FALSE---------------------------------------------------------------
 #  install.packages("xgboost")
 
 ## ----libLoading, results='hold', message=F, warning=F-------------------------
@@ -30,11 +30,26 @@ class(train$label)
 bstSparse <- xgboost(data = train$data, label = train$label, max_depth = 2, eta = 1, nthread = 2, nrounds = 2, objective = "binary:logistic")
 
 ## ----trainingDense, message=F, warning=F--------------------------------------
-bstDense <- xgboost(data = as.matrix(train$data), label = train$label, max_depth = 2, eta = 1, nthread = 2, nrounds = 2, objective = "binary:logistic")
+bstDense <- xgboost(
+    data = as.matrix(train$data),
+    label = train$label,
+    max_depth = 2,
+    eta = 1,
+    nthread = 2,
+    nrounds = 2,
+    objective = "binary:logistic"
+)
 
 ## ----trainingDmatrix, message=F, warning=F------------------------------------
-dtrain <- xgb.DMatrix(data = train$data, label = train$label)
-bstDMatrix <- xgboost(data = dtrain, max_depth = 2, eta = 1, nthread = 2, nrounds = 2, objective = "binary:logistic")
+dtrain <- xgb.DMatrix(data = train$data, label = train$label, nthread = 2)
+bstDMatrix <- xgboost(
+    data = dtrain,
+    max_depth = 2,
+    eta = 1,
+    nthread = 2,
+    nrounds = 2,
+    objective = "binary:logistic"
+)
 
 ## ----trainingVerbose0, message=T, warning=F-----------------------------------
 # verbose = 0, no message
@@ -66,8 +81,8 @@ err <- mean(as.numeric(pred > 0.5) != test$label)
 print(paste("test-error=", err))
 
 ## ----DMatrix, message=F, warning=F--------------------------------------------
-dtrain <- xgb.DMatrix(data = train$data, label=train$label)
-dtest <- xgb.DMatrix(data = test$data, label=test$label)
+dtrain <- xgb.DMatrix(data = train$data, label = train$label, nthread = 2)
+dtest <- xgb.DMatrix(data = test$data, label = test$label, nthread = 2)
 
 ## ----watchlist, message=F, warning=F------------------------------------------
 watchlist <- list(train=dtrain, test=dtest)
@@ -105,6 +120,7 @@ xgb.save(bst, "xgboost.model")
 ## ----loadModel, message=F, warning=F------------------------------------------
 # load binary model to R
 bst2 <- xgb.load("xgboost.model")
+xgb.parameters(bst2) <- list(nthread = 2)
 pred2 <- predict(bst2, test$data)
 
 # And now the test
@@ -123,6 +139,7 @@ print(class(rawVec))
 
 # load binary model to R
 bst3 <- xgb.load(rawVec)
+xgb.parameters(bst3) <- list(nthread = 2)
 pred3 <- predict(bst3, test$data)
 
 # pred2 should be identical to pred
