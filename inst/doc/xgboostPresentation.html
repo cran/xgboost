@@ -768,11 +768,11 @@ linear boosting. The only difference with previous command is
 <code>booster = &quot;gblinear&quot;</code> parameter (and removing
 <code>eta</code> parameter).</p>
 <div class="sourceCode" id="cb39"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgb.train</span>(<span class="at">data=</span>dtrain, <span class="at">booster =</span> <span class="st">&quot;gblinear&quot;</span>, <span class="at">max_depth=</span><span class="dv">2</span>, <span class="at">nthread =</span> <span class="dv">2</span>, <span class="at">nrounds=</span><span class="dv">2</span>, <span class="at">watchlist=</span>watchlist, <span class="at">eval_metric =</span> <span class="st">&quot;error&quot;</span>, <span class="at">eval_metric =</span> <span class="st">&quot;logloss&quot;</span>, <span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</span></code></pre></div>
-<pre><code>## [02:29:43] WARNING: src/learner.cc:767: 
+<pre><code>## [16:53:22] WARNING: src/learner.cc:767: 
 ## Parameters: { &quot;max_depth&quot; } are not used.
 ## 
-## [1]  train-error:0.015354    train-logloss:0.190044  test-error:0.016139 test-logloss:0.194908 
-## [2]  train-error:0.002917    train-logloss:0.082546  test-error:0.002483 test-logloss:0.085340</code></pre>
+## [1]  train-error:0.014586    train-logloss:0.191771  test-error:0.018622 test-logloss:0.196238 
+## [2]  train-error:0.003685    train-logloss:0.084453  test-error:0.003104 test-logloss:0.086904</code></pre>
 <p>In this specific case, <em>linear boosting</em> gets slightly better
 performance metrics than decision trees based algorithm.</p>
 <p>In simple cases, it will happen because there is nothing better than
@@ -793,7 +793,7 @@ both dataset and outcome) can also be saved using
 <pre><code>## [1] TRUE</code></pre>
 <div class="sourceCode" id="cb43"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" tabindex="-1"></a><span class="co"># to load it in, simply call xgb.DMatrix</span></span>
 <span id="cb43-2"><a href="#cb43-2" tabindex="-1"></a>dtrain2 <span class="ot">&lt;-</span> <span class="fu">xgb.DMatrix</span>(<span class="st">&quot;dtrain.buffer&quot;</span>)</span></code></pre></div>
-<pre><code>## [02:29:43] 6513x126 matrix with 143286 entries loaded from dtrain.buffer</code></pre>
+<pre><code>## [16:53:22] 6513x126 matrix with 143286 entries loaded from dtrain.buffer</code></pre>
 <div class="sourceCode" id="cb45"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgb.train</span>(<span class="at">data=</span>dtrain2, <span class="at">max_depth=</span><span class="dv">2</span>, <span class="at">eta=</span><span class="dv">1</span>, <span class="at">nthread =</span> <span class="dv">2</span>, <span class="at">nrounds=</span><span class="dv">2</span>, <span class="at">watchlist=</span>watchlist, <span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</span></code></pre></div>
 <pre><code>## [1]  train-logloss:0.233376  test-logloss:0.226686 
 ## [2]  train-logloss:0.136658  test-logloss:0.137874</code></pre>

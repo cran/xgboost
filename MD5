@@ -1,4 +1,4 @@
-02eb1d3f7b84a713f0c1a909d53ba56b *DESCRIPTION
+cbc93d4f1614e9663a8f2c7f4f5dc5c9 *DESCRIPTION
 5586d388d64539d3a3fb93ff8a728952 *LICENSE
 54194b40d10cba3a7a6050c31f1db0be *NAMESPACE
 0257992dc1156b95108533fdec4e7544 *R/callbacks.R
@@ -28,8 +28,8 @@ f7a53d76775a90a154e005850b7218db *R/xgb.serialize.R
 445b8d74c3b9703884b64e030ad057b5 *R/xgboost.R
 0a043cc37adcf22a1acd7583ffbbeebc *build/vignette.rds
 ba3caf48933f8c648233c7cf67566f2f *cleanup
-0903606516e0b890e2ab6e4ced50fdfb *configure
-6c656e9fe35c262638bbb7698ee82ce3 *configure.ac
+c03769bf5ece8790c3710b1400fe9bb6 *configure
+49e33bd9bd996463086177830f318566 *configure.ac
 d41d8cd98f00b204e9800998ecf8427e *configure.win
 05e29359ef24243df589703588987c0e *data/agaricus.test.rda
 9ebe1e11ce9d3bbc68acae073d6f2a21 *data/agaricus.train.rda
@@ -50,13 +50,13 @@ c44ecaf93fe018f0d3cc44e4c9334d3d *demo/predict_leaf_indices.R
 f05b335b86a5c93ffc40a4f5be0b508d *demo/tweedie_regression.R
 f3037f6fd05ad8a761a01e9bb4c74bbb *inst/doc/discoverYourData.R
 0895d9fdbc7cd9d9dec49d7911b741a9 *inst/doc/discoverYourData.Rmd
-2d259717dcadb2b0dd61134b84b7b7fe *inst/doc/discoverYourData.html
+4be2c13349c73fa8b3e9722b4cc75aed *inst/doc/discoverYourData.html
 824506557e61be111a827348318b460f *inst/doc/xgboost.R
 49913351ca59e27ba411e01858bcdd4f *inst/doc/xgboost.Rnw
-f53911ed29417812f7174ec0994ca63e *inst/doc/xgboost.pdf
+7d8a4091da7fa3c2086263d7afe5d2a2 *inst/doc/xgboost.pdf
 d4d280623fa3968628cc9c2a2f1f2ce3 *inst/doc/xgboostPresentation.R
 4d6f98553a210c2adf341558ae9cf97b *inst/doc/xgboostPresentation.Rmd
-ba5d7241d7b8fc38588e8311317ae477 *inst/doc/xgboostPresentation.html
+68cdd85fe4cf2e560b57ab8d1fa33dc9 *inst/doc/xgboostPresentation.html
 44433e584dc4d365225edae5e60a7057 *inst/doc/xgboostfromJSON.R
 55b9a11a4a5710ba4dccc282c419b32d *inst/doc/xgboostfromJSON.Rmd
 5cd0752c42062d06c73232e3e2c3b833 *inst/doc/xgboostfromJSON.html
@@ -180,7 +180,7 @@ f3e0beca2709c3b0b706b36e0db89dd1 *src/dmlc-core/src/io/single_file_split.h
 fc2a593b5148ebdf251719db0950872e *src/dmlc-core/src/io/threaded_input_split.h
 1b8aa65cd100788eb236609d15eae91e *src/dmlc-core/src/io/uri_spec.h
 bb77c0554e3fdc106ef7077979d978eb *src/dmlc-core/src/recordio.cc
-c259ba34e567b6a5e381a64988df2486 *src/include/xgboost/base.h
+8041e998e1ac7a857dd6ce16cd8224dc *src/include/xgboost/base.h
 d5abbed682ab6b5bcc178989e45329e1 *src/include/xgboost/c_api.h
 6d31ca89cfbe69531f2847f893525c01 *src/include/xgboost/collective/socket.h
 787de2f8eaa09b98a6db915bfb58014b *src/include/xgboost/data.h
@@ -206,7 +206,7 @@ ba690274fc38215434ee3b963990d544 *src/include/xgboost/parameter.h
 d282fa139510a175dc01af241cd58a17 *src/include/xgboost/task.h
 a43f03f6a4f69811737e1d73eb6c9bbc *src/include/xgboost/tree_model.h
 214de7d4b6dfa24fefc9c69a023bace8 *src/include/xgboost/tree_updater.h
-fe544943f478ee87b97e19502c445b74 *src/include/xgboost/version_config.h
+48d6fd9e468947cb88faa042956a60ef *src/include/xgboost/version_config.h
 42f4ab2bc460ff5736f707bf93cb3ca5 *src/init.c
 7bab09dd6bd33f32dcd43be321bbbfde *src/rabit/include/rabit/base.h
 aad63a15349dcef3625ab9e31a07ed9a *src/rabit/include/rabit/c_api.h
@@ -252,7 +252,7 @@ a2923809ec392f1cdf5a12f896fd091d *src/src/common/charconv.cc
 21cda61a5c0a8f8b29ebd7d278bcdadd *src/src/common/column_matrix.h
 2dbe3a5ccd52f44cd3c24b662bbccd19 *src/src/common/common.cc
 da4d5d771d6f043491de1c1d200c7388 *src/src/common/common.cu
-30ff300e8653d4e3d77e4841001a297e *src/src/common/common.h
+a73978c070ef4ddbcb9cb3f6fcf7e4ce *src/src/common/common.h
 1fe38e6121fb8a3669471f13eac90a36 *src/src/common/compressed_iterator.h
 b4aed8e95f936c3c8fd066687b158a02 *src/src/common/config.h
 403a2e77a59b7aa04315c5352928946b *src/src/common/cuda_pinned_allocator.h
@@ -267,8 +267,8 @@ ef9c402686ac91f5bbd91daf18a27c3a *src/src/common/host_device_vector.cc
 419052fd3fa12f361255db38cbffd7ed *src/src/common/io.cc
 ddb878351e1189bbda782585e7d6621d *src/src/common/io.h
 3b0d6074e0ed41a38c54e31fa08a8509 *src/src/common/json.cc
-a4784d4ddb12441e9000d9b555680507 *src/src/common/linalg_op.cuh
-8d0666407f6a03b661d8d6e5bde5dc42 *src/src/common/linalg_op.h
+241189bd1421441a57a21a0679af7afc *src/src/common/linalg_op.cuh
+8928687958c940827eca85e7cb093d61 *src/src/common/linalg_op.h
 e676f04c51d1e7e185b8a4a2a3ac948a *src/src/common/math.h
 9dbd008b4295561f6dc3caf0c899d7dd *src/src/common/numeric.cc
 0b61da7a30ff06d4f76af11a44c2c21c *src/src/common/numeric.cu
@@ -325,7 +325,7 @@ a2c078e5620963aa2905ef64efdacd3c *src/src/data/iterative_dmatrix.h
 5b8941de1791a8e3e22f36527aff31bc *src/src/data/proxy_dmatrix.cc
 5ec495c84e0f090db36ddfadb7f84f16 *src/src/data/proxy_dmatrix.cu
 d456371182faa4ec498ec8e68a6feba5 *src/src/data/proxy_dmatrix.cuh
-edafb2d5beb8483c0e317ffc7ac414b7 *src/src/data/proxy_dmatrix.h
+5ff3ba2e4e7b7105b2aae832a42c9d95 *src/src/data/proxy_dmatrix.h
 0ced2639eaf0ed01b852dc9b104d9931 *src/src/data/simple_batch_iterator.h
 5bce426fc14622bb40978dd456cc6425 *src/src/data/simple_dmatrix.cc
 86fcc2c593dab1dca8a3dfa59db78dfe *src/src/data/simple_dmatrix.cu

@@ -1,8 +1,8 @@
 Package: xgboost
 Type: Package
 Title: Extreme Gradient Boosting
-Version: 1.7.6.1
-Date: 2023-12-05
+Version: 1.7.7.1
+Date: 2024-01-25
 Authors@R: c(
   person("Tianqi", "Chen", role = c("aut"),
          email = "tianqi.tchen@gmail.com"),
@@ -55,7 +55,7 @@ Imports: Matrix (>= 1.1-0), methods, data.table (>= 1.9.6), jsonlite
 RoxygenNote: 7.2.3
 Encoding: UTF-8
 SystemRequirements: GNU make, C++17
-Packaged: 2023-12-05 18:29:45 UTC; jiamingy
+Packaged: 2024-01-25 08:53:23 UTC; jiamingy
 Author: Tianqi Chen [aut],
   Tong He [aut],
   Michael Benesty [aut],
@@ -74,4 +74,4 @@ Author: Tianqi Chen [aut],
   Jiaming Yuan [aut, cre],
   XGBoost contributors [cph] (base XGBoost implementation)
 Repository: CRAN
-Date/Publication: 2023-12-06 08:50:02 UTC
+Date/Publication: 2024-01-25 13:10:03 UTC
