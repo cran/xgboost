@@ -50,7 +50,7 @@ overflow: visible;
 </style>
 <style type="text/css" data-origin="pandoc">
 pre > code.sourceCode { white-space: pre; position: relative; }
-pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span { line-height: 1.25; }
 pre > code.sourceCode > span:empty { height: 1.2em; }
 .sourceCode { overflow: visible; }
 code.sourceCode > span { color: inherit; text-decoration: inherit; }
@@ -61,7 +61,7 @@ div.sourceCode { overflow: auto; }
 }
 @media print {
 pre > code.sourceCode { white-space: pre-wrap; }
-pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
 }
 pre.numberSource code
 { counter-reset: source-line 0; }
@@ -149,6 +149,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; }
 div.csl-bib-body { }
 div.csl-entry {
 clear: both;
+margin-bottom: 0em;
 }
 .hanging div.csl-entry {
 margin-left:2em;
@@ -414,7 +415,7 @@ included:</p>
 package is made to be extendible, so that users are also allowed to
 define their own objective functions easily.</p>
 <p>It has been <a href="https://github.com/dmlc/xgboost">used</a> to win
-several <a href="http://www.kaggle.com">Kaggle</a> competitions.</p>
+several <a href="https://www.kaggle.com">Kaggle</a> competitions.</p>
 <p>It has several features:</p>
 <ul>
 <li>Speed: it can automatically do parallel computation on
@@ -494,7 +495,7 @@ seen.</p>
 <p>In the real world, it would be up to you to make this division
 between <code>train</code> and <code>test</code> data. The way to do it
 is out of the purpose of this article, however <code>caret</code>
-package may <a href="http://topepo.github.io/caret/data-splitting.html">help</a>.</p>
+package may <a href="https://topepo.github.io/caret/data-splitting.html">help</a>.</p>
 </blockquote>
 <p>Each variable is a <code>list</code> containing two things,
 <code>label</code> and <code>data</code>:</p>
@@ -747,7 +748,7 @@ some way, it makes sense: what we have learned from the training dataset
 matches the observations from the test dataset.</p>
 <p>If with your own dataset you have not such results, you should think
 about how you divided your dataset in training and test. May be there is
-something to fix. Again, <code>caret</code> package may <a href="http://topepo.github.io/caret/data-splitting.html">help</a>.</p>
+something to fix. Again, <code>caret</code> package may <a href="https://topepo.github.io/caret/data-splitting.html">help</a>.</p>
 <p>For a better understanding of the learning progression, you may want
 to have some specific metric or even use multiple evaluation
 metrics.</p>
@@ -768,11 +769,11 @@ linear boosting. The only difference with previous command is
 <code>booster = &quot;gblinear&quot;</code> parameter (and removing
 <code>eta</code> parameter).</p>
 <div class="sourceCode" id="cb39"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgb.train</span>(<span class="at">data=</span>dtrain, <span class="at">booster =</span> <span class="st">&quot;gblinear&quot;</span>, <span class="at">max_depth=</span><span class="dv">2</span>, <span class="at">nthread =</span> <span class="dv">2</span>, <span class="at">nrounds=</span><span class="dv">2</span>, <span class="at">watchlist=</span>watchlist, <span class="at">eval_metric =</span> <span class="st">&quot;error&quot;</span>, <span class="at">eval_metric =</span> <span class="st">&quot;logloss&quot;</span>, <span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</span></code></pre></div>
-<pre><code>## [16:53:22] WARNING: src/learner.cc:767: 
+<pre><code>## [22:21:13] WARNING: src/learner.cc:767: 
 ## Parameters: { &quot;max_depth&quot; } are not used.
 ## 
-## [1]  train-error:0.014586    train-logloss:0.191771  test-error:0.018622 test-logloss:0.196238 
-## [2]  train-error:0.003685    train-logloss:0.084453  test-error:0.003104 test-logloss:0.086904</code></pre>
+## [1]  train-error:0.016736    train-logloss:0.194704  test-error:0.020484 test-logloss:0.199159 
+## [2]  train-error:0.003071    train-logloss:0.084524  test-error:0.002483 test-logloss:0.087027</code></pre>
 <p>In this specific case, <em>linear boosting</em> gets slightly better
 performance metrics than decision trees based algorithm.</p>
 <p>In simple cases, it will happen because there is nothing better than
@@ -793,7 +794,7 @@ both dataset and outcome) can also be saved using
 <pre><code>## [1] TRUE</code></pre>
 <div class="sourceCode" id="cb43"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" tabindex="-1"></a><span class="co"># to load it in, simply call xgb.DMatrix</span></span>
 <span id="cb43-2"><a href="#cb43-2" tabindex="-1"></a>dtrain2 <span class="ot">&lt;-</span> <span class="fu">xgb.DMatrix</span>(<span class="st">&quot;dtrain.buffer&quot;</span>)</span></code></pre></div>
-<pre><code>## [16:53:22] 6513x126 matrix with 143286 entries loaded from dtrain.buffer</code></pre>
+<pre><code>## [22:21:13] 6513x126 matrix with 143286 entries loaded from dtrain.buffer</code></pre>
 <div class="sourceCode" id="cb45"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" tabindex="-1"></a>bst <span class="ot">&lt;-</span> <span class="fu">xgb.train</span>(<span class="at">data=</span>dtrain2, <span class="at">max_depth=</span><span class="dv">2</span>, <span class="at">eta=</span><span class="dv">1</span>, <span class="at">nthread =</span> <span class="dv">2</span>, <span class="at">nrounds=</span><span class="dv">2</span>, <span class="at">watchlist=</span>watchlist, <span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>)</span></code></pre></div>
 <pre><code>## [1]  train-logloss:0.233376  test-logloss:0.226686 
 ## [2]  train-logloss:0.136658  test-logloss:0.137874</code></pre>
@@ -903,7 +904,7 @@ well!</p>
 </div>
 <div id="references" class="section level2 unnumbered">
 <h2 class="unnumbered">References</h2>
-<div id="refs" class="references csl-bib-body hanging-indent">
+<div id="refs" class="references csl-bib-body hanging-indent" entry-spacing="0">
 <div id="ref-Bache+Lichman:2013" class="csl-entry">
 Bache, K., and M. Lichman. 2013. <span>“<span>UCI</span> Machine
 Learning Repository.”</span> University of California, Irvine, School of
