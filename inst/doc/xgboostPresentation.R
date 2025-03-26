@@ -1,10 +1,10 @@
 ## ----installGithub, eval=FALSE------------------------------------------------
-#  install.packages("drat", repos="https://cran.rstudio.com")
-#  drat:::addRepo("dmlc")
-#  install.packages("xgboost", repos="http://dmlc.ml/drat/", type = "source")
+# install.packages("drat", repos="https://cran.rstudio.com")
+# drat:::addRepo("dmlc")
+# install.packages("xgboost", repos="http://dmlc.ml/drat/", type = "source")
 
 ## ----eval=FALSE---------------------------------------------------------------
-#  install.packages("xgboost")
+# install.packages("xgboost")
 
 ## ----libLoading, results='hold', message=F, warning=F-------------------------
 require(xgboost)
