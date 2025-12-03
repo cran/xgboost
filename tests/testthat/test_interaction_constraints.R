@@ -11,6 +11,40 @@ x3 <- sample(c(1, 2, 3), size = 1000, replace = TRUE)
 y <- x1 + x2 + x3 + x1 * x2 * x3 + rnorm(1000, 0.001) + 3 * sin(x1)
 train <- matrix(c(x1, x2, x3), ncol = 3)
 
+test_that("interaction constraints for regression", {
+  # Fit a model that only allows interaction between x1 and x2
+  bst <- xgb.train(
+    data = xgb.DMatrix(train, label = y, nthread = 1),
+    nrounds = 100, verbose = 0,
+    params = xgb.params(
+      max_depth = 3,
+      learning_rate = 0.1,
+      nthread = 2,
+      interaction_constraints = list(c(0, 1))
+    )
+  )
+
+  # Set all observations to have the same x3 values then increment
+  #  by the same amount
+  preds <- lapply(c(1, 2, 3), function(x) {
+    tmat <- matrix(c(x1, x2, rep(x, 1000)), ncol = 3)
+    return(predict(bst, tmat))
+  })
+
+  # Check incrementing x3 has the same effect on all observations
+  #   since x3 is constrained to be independent of x1 and x2
+  #   and all observations start off from the same x3 value
+  diff1 <- preds[[2]] - preds[[1]]
+  test1 <- all(abs(diff1 - diff1[1]) < 1e-4)
+
+  diff2 <- preds[[3]] - preds[[2]]
+  test2 <- all(abs(diff2 - diff2[1]) < 1e-4)
+
+  expect_true({
+    test1 & test2
+  }, "Interaction Contraint Satisfied")
+})
+
 test_that("interaction constraints scientific representation", {
   rows <- 10
   ## When number exceeds 1e5, R paste function uses scientific representation.
@@ -20,18 +54,25 @@ test_that("interaction constraints scientific representation", {
   d <- matrix(rexp(rows, rate = .1), nrow = rows, ncol = cols)
   y <- rnorm(rows)
 
-  dtrain <- xgb.DMatrix(data = d, info = list(label = y), nthread = n_threads)
+  dtrain <- xgb.DMatrix(data = d, label = y, nthread = n_threads)
   inc <- list(c(seq.int(from = 0, to = cols, by = 1)))
 
   with_inc <- xgb.train(
     data = dtrain,
-    tree_method = 'hist',
-    interaction_constraints = inc,
     nrounds = 10,
-    nthread = n_threads
+    params = xgb.params(
+      tree_method = 'hist',
+      interaction_constraints = inc,
+      nthread = n_threads
+    )
   )
   without_inc <- xgb.train(
-    data = dtrain, tree_method = 'hist', nrounds = 10, nthread = n_threads
+    data = dtrain,
+    nrounds = 10,
+    params = xgb.params(
+      tree_method = 'hist',
+      nthread = n_threads
+    )
   )
   expect_equal(xgb.save.raw(with_inc), xgb.save.raw(without_inc))
 })

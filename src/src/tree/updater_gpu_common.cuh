@@ -1,22 +1,17 @@
-/*!
- * Copyright 2017-2019 XGBoost contributors
+/**
+ * Copyright 2017-2024, XGBoost contributors
  */
 #pragma once
-#include <thrust/random.h>
-#include <cstdio>
-#include <cub/cub.cuh>
-#include <stdexcept>
-#include <string>
-#include <vector>
-#include "../common/categorical.h"
-#include "../common/device_helpers.cuh"
-#include "../common/random.h"
-#include "gpu_hist/histogram.cuh"
-#include "param.h"
+#include <limits>   // for numeric_limits
+#include <ostream>  // for ostream
 
-namespace xgboost {
-namespace tree {
+#include "../data/batch_utils.h"   // for DftPrefetchBatches, StaticBatch
+#include "gpu_hist/quantiser.cuh"  // for GradientQuantiser
+#include "param.h"                 // for TrainParam
+#include "xgboost/base.h"          // for bst_bin_t
+#include "xgboost/task.h"          // for ObjInfo
 
+namespace xgboost::tree {
 struct GPUTrainingParam {
   // minimum amount of hessian(weight) allowed in a child
   float min_child_weight;
@@ -56,27 +51,20 @@ enum DefaultDirection {
 };
 
 struct DeviceSplitCandidate {
-  float loss_chg {-std::numeric_limits<float>::max()};
-  DefaultDirection dir {kLeftDir};
+  float loss_chg{-std::numeric_limits<float>::max()};
+  DefaultDirection dir{kLeftDir};
   int findex {-1};
   float fvalue {0};
   // categorical split, either it's the split category for OHE or the threshold for partition-based
   // split.
   bst_cat_t thresh{-1};
 
-  common::CatBitField split_cats;
   bool is_cat { false };
 
   GradientPairInt64 left_sum;
   GradientPairInt64 right_sum;
 
   XGBOOST_DEVICE DeviceSplitCandidate() {}  // NOLINT
-
-  template <typename T>
-  XGBOOST_DEVICE void SetCat(T c) {
-    this->split_cats.Set(common::AsCat(c));
-    fvalue = std::max(this->fvalue, static_cast<float>(c));
-  }
 
   XGBOOST_DEVICE void Update(float loss_chg_in, DefaultDirection dir_in, float fvalue_in,
                              int findex_in, GradientPairInt64 left_sum_in,
@@ -100,22 +88,23 @@ struct DeviceSplitCandidate {
    */
   XGBOOST_DEVICE void UpdateCat(float loss_chg_in, DefaultDirection dir_in, bst_cat_t thresh_in,
                                 bst_feature_t findex_in, GradientPairInt64 left_sum_in,
-                                GradientPairInt64 right_sum_in, GPUTrainingParam const& param, const GradientQuantiser& quantiser) {
-    if (loss_chg_in > loss_chg &&
-        quantiser.ToFloatingPoint(left_sum_in).GetHess() >= param.min_child_weight &&
-        quantiser.ToFloatingPoint(right_sum_in).GetHess() >= param.min_child_weight) {
-      loss_chg = loss_chg_in;
-      dir = dir_in;
-      fvalue = std::numeric_limits<float>::quiet_NaN();
-      thresh = thresh_in;
-      is_cat = true;
-      left_sum = left_sum_in;
-      right_sum = right_sum_in;
-      findex = findex_in;
-    }
+                                GradientPairInt64 right_sum_in, GPUTrainingParam const& param,
+                                const GradientQuantiser& quantiser) {
+      if (loss_chg_in > loss_chg &&
+          quantiser.ToFloatingPoint(left_sum_in).GetHess() >= param.min_child_weight &&
+          quantiser.ToFloatingPoint(right_sum_in).GetHess() >= param.min_child_weight) {
+        loss_chg = loss_chg_in;
+        dir = dir_in;
+        fvalue = std::numeric_limits<float>::quiet_NaN();
+        thresh = thresh_in;
+        is_cat = true;
+        left_sum = left_sum_in;
+        right_sum = right_sum_in;
+        findex = findex_in;
+      }
   }
 
-  XGBOOST_DEVICE bool IsValid() const { return loss_chg > 0.0f; }
+  [[nodiscard]] XGBOOST_DEVICE bool IsValid() const { return loss_chg > 0.0f; }
 
   friend std::ostream& operator<<(std::ostream& os, DeviceSplitCandidate const& c) {
     os << "loss_chg:" << c.loss_chg << ", "
@@ -130,6 +119,23 @@ struct DeviceSplitCandidate {
   }
 };
 
+namespace cuda_impl {
+inline BatchParam HistBatch(TrainParam const& param) {
+  auto p = BatchParam{param.max_bin, TrainParam::DftSparseThreshold()};
+  p.prefetch_copy = true;
+  p.n_prefetch_batches = ::xgboost::cuda_impl::DftPrefetchBatches();
+  return p;
+}
+
+inline BatchParam ApproxBatch(TrainParam const& p, common::Span<float const> hess,
+                              ObjInfo const& task) {
+  auto batch = BatchParam{p.max_bin, hess, !task.const_hess};
+  batch.prefetch_copy = true;
+  batch.n_prefetch_batches = ::xgboost::cuda_impl::DftPrefetchBatches();
+  return batch;
+}
+}  // namespace cuda_impl
+
 template <typename T>
 struct SumCallbackOp {
   // Running prefix
@@ -142,5 +148,4 @@ struct SumCallbackOp {
     return old_prefix;
   }
 };
-}  // namespace tree
-}  // namespace xgboost
+}  // namespace xgboost::tree

@@ -1,22 +1,25 @@
-/*!
- * Copyright 2022, XGBoost contributors.
+/**
+ * Copyright 2022-2024, XGBoost contributors.
  */
 #ifndef XGBOOST_COMMON_NUMERIC_H_
 #define XGBOOST_COMMON_NUMERIC_H_
 
 #include <dmlc/common.h>  // OMPException
 
-#include <algorithm>  // std::max
-#include <iterator>   // std::iterator_traits
-#include <vector>
+#include <algorithm>    // for max
+#include <cstddef>      // for size_t
+#include <cstdint>      // for int32_t
+#include <iterator>     // for iterator_traits
+#include <numeric>      // for accumulate
+#include <type_traits>  // for is_same_v
+#include <vector>       // for vector
 
 #include "common.h"                      // AssertGPUSupport
 #include "threading_utils.h"             // MemStackAllocator, DefaultMaxThreads
-#include "xgboost/generic_parameters.h"  // Context
+#include "xgboost/context.h"             // Context
 #include "xgboost/host_device_vector.h"  // HostDeviceVector
 
-namespace xgboost {
-namespace common {
+namespace xgboost::common {
 
 /**
  * \brief Run length encode on CPU, input must be sorted.
@@ -42,8 +45,8 @@ void RunLengthEncode(Iter begin, Iter end, std::vector<Idx>* p_out) {
  */
 template <typename InIt, typename OutIt, typename T>
 void PartialSum(int32_t n_threads, InIt begin, InIt end, T init, OutIt out_it) {
-  static_assert(std::is_same<T, typename std::iterator_traits<InIt>::value_type>::value, "");
-  static_assert(std::is_same<T, typename std::iterator_traits<OutIt>::value_type>::value, "");
+  static_assert(std::is_same_v<T, typename std::iterator_traits<InIt>::value_type>);
+  static_assert(std::is_same_v<T, typename std::iterator_traits<OutIt>::value_type>);
   // The number of threads is pegged to the batch size. If the OMP block is parallelized
   // on anything other than the batch/block size, it should be reassigned
   auto n = static_cast<size_t>(std::distance(begin, end));
@@ -95,7 +98,7 @@ void PartialSum(int32_t n_threads, InIt begin, InIt end, T init, OutIt out_it) {
   exc.Rethrow();
 }
 
-namespace cuda {
+namespace cuda_impl {
 double Reduce(Context const* ctx, HostDeviceVector<float> const& values);
 #if !defined(XGBOOST_USE_CUDA)
 inline double Reduce(Context const*, HostDeviceVector<float> const&) {
@@ -103,9 +106,25 @@ inline double Reduce(Context const*, HostDeviceVector<float> const&) {
   return 0;
 }
 #endif  // !defined(XGBOOST_USE_CUDA)
-}  // namespace cuda
+}  // namespace cuda_impl
+
 /**
- * \brief Reduction with summation.
+ * \brief Reduction with iterator. init must be additive identity. (0 for primitive types)
+ */
+namespace cpu_impl {
+template <typename It, typename V = typename It::value_type>
+V Reduce(Context const* ctx, It first, It second, V const& init) {
+  std::size_t n = std::distance(first, second);
+  auto n_threads = static_cast<std::size_t>(std::min(n, static_cast<std::size_t>(ctx->Threads())));
+  common::MemStackAllocator<V, common::DefaultMaxThreads()> result_tloc(n_threads, init);
+  common::ParallelFor(n, n_threads, [&](auto i) { result_tloc[omp_get_thread_num()] += first[i]; });
+  auto result = std::accumulate(result_tloc.cbegin(), result_tloc.cbegin() + n_threads, init);
+  return result;
+}
+}  // namespace cpu_impl
+
+/**
+ * \brief Reduction on host device vector.
  */
 double Reduce(Context const* ctx, HostDeviceVector<float> const& values);
 
@@ -128,7 +147,6 @@ void Iota(Context const* ctx, It first, It last,
     });
   }
 }
-}  // namespace common
-}  // namespace xgboost
+}  // namespace xgboost::common
 
 #endif  // XGBOOST_COMMON_NUMERIC_H_

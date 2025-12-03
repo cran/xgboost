@@ -1,21 +1,17 @@
-/*!
- * Copyright 2020-2022 by XGBoost Contributors
+/**
+ * Copyright 2020-2024, XGBoost Contributors
  * \file categorical.h
  */
 #ifndef XGBOOST_COMMON_CATEGORICAL_H_
 #define XGBOOST_COMMON_CATEGORICAL_H_
 
-#include <limits>
-
 #include "bitfield.h"
 #include "xgboost/base.h"
 #include "xgboost/data.h"
-#include "xgboost/parameter.h"
 #include "xgboost/span.h"
+#include "xgboost/tree_model.h"
 
-namespace xgboost {
-namespace common {
-
+namespace xgboost::common {
 using CatBitField = LBitField32;
 using KCatBitField = CLBitField32;
 
@@ -42,9 +38,9 @@ constexpr inline bst_cat_t OutOfRangeCat() {
 
 inline XGBOOST_DEVICE bool InvalidCat(float cat) {
   constexpr auto kMaxCat = OutOfRangeCat();
-  static_assert(static_cast<bst_cat_t>(static_cast<float>(kMaxCat)) == kMaxCat, "");
-  static_assert(static_cast<bst_cat_t>(static_cast<float>(kMaxCat + 1)) != kMaxCat + 1, "");
-  static_assert(static_cast<float>(kMaxCat + 1) == kMaxCat, "");
+  static_assert(static_cast<bst_cat_t>(static_cast<float>(kMaxCat)) == kMaxCat);
+  static_assert(static_cast<bst_cat_t>(static_cast<float>(kMaxCat + 1)) != kMaxCat + 1);
+  static_assert(static_cast<float>(kMaxCat + 1) == kMaxCat);
   return cat < 0 || cat >= kMaxCat;
 }
 
@@ -53,7 +49,7 @@ inline XGBOOST_DEVICE bool InvalidCat(float cat) {
  *
  *   Go to left if it's NOT the matching category, which matches one-hot encoding.
  */
-inline XGBOOST_DEVICE bool Decision(common::Span<uint32_t const> cats, float cat) {
+inline XGBOOST_DEVICE bool Decision(common::Span<CatBitField::value_type const> cats, float cat) {
   KCatBitField const s_cats(cats);
   if (XGBOOST_EXPECT(InvalidCat(cat), false)) {
     return true;
@@ -95,7 +91,12 @@ XGBOOST_DEVICE inline bool UseOneHot(uint32_t n_cats, uint32_t max_cat_to_onehot
 struct IsCatOp {
   XGBOOST_DEVICE bool operator()(FeatureType ft) { return ft == FeatureType::kCategorical; }
 };
-}  // namespace common
-}  // namespace xgboost
+
+inline auto GetNodeCats(common::Span<CatBitField::value_type const> categories,
+                        RegTree::CategoricalSplitMatrix::Segment seg) {
+  KCatBitField node_cats{categories.subspan(seg.beg, seg.size)};
+  return node_cats;
+}
+}  // namespace xgboost::common
 
 #endif  // XGBOOST_COMMON_CATEGORICAL_H_

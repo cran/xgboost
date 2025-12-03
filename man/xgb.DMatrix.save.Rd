@@ -15,9 +15,11 @@ xgb.DMatrix.save(dmatrix, fname)
 Save xgb.DMatrix object to binary file
 }
 \examples{
-data(agaricus.train, package='xgboost')
+\dontshow{RhpcBLASctl::omp_set_num_threads(1)}
+data(agaricus.train, package = "xgboost")
+
 dtrain <- with(agaricus.train, xgb.DMatrix(data, label = label, nthread = 2))
-xgb.DMatrix.save(dtrain, 'xgb.DMatrix.data')
-dtrain <- xgb.DMatrix('xgb.DMatrix.data')
-if (file.exists('xgb.DMatrix.data')) file.remove('xgb.DMatrix.data')
+fname <- file.path(tempdir(), "xgb.DMatrix.data")
+xgb.DMatrix.save(dtrain, fname)
+dtrain <- xgb.DMatrix(fname, nthread = 1)
 }

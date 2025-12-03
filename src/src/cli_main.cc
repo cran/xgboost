@@ -4,33 +4,26 @@
  * \brief The command line interface program of xgboost.
  *  This file is not included in dynamic library.
  */
-#define _CRT_SECURE_NO_WARNINGS
-#define _CRT_SECURE_NO_DEPRECATE
-
-#if !defined(NOMINMAX) && defined(_WIN32)
-#define NOMINMAX
-#endif  // !defined(NOMINMAX)
-
 #include <dmlc/timer.h>
-
-#include <xgboost/learner.h>
+#include <xgboost/base.h>
 #include <xgboost/data.h>
 #include <xgboost/json.h>
+#include <xgboost/learner.h>
 #include <xgboost/logging.h>
 #include <xgboost/parameter.h>
 
-#include <iomanip>
-#include <ctime>
-#include <string>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
+#include <iomanip>
+#include <string>
 #include <vector>
-#include "collective/communicator-inl.h"
+
+#include "c_api/c_api_utils.h"
 #include "common/common.h"
 #include "common/config.h"
 #include "common/io.h"
 #include "common/version.h"
-#include "c_api/c_api_utils.h"
 
 namespace xgboost {
 enum CLITask {
@@ -112,9 +105,8 @@ struct CLIParam : public XGBoostParameter<CLIParam> {
     DMLC_DECLARE_FIELD(name_pred).set_default("pred.txt")
         .describe("Name of the prediction file.");
     DMLC_DECLARE_FIELD(dsplit).set_default(0)
-        .add_enum("auto", 0)
+        .add_enum("row", 0)
         .add_enum("col", 1)
-        .add_enum("row", 2)
         .describe("Data split mode.");
     DMLC_DECLARE_FIELD(ntree_limit).set_default(0).set_lower_bound(0)
         .describe("(Deprecated) Use iteration_begin/iteration_end instead.");
@@ -157,9 +149,6 @@ struct CLIParam : public XGBoostParameter<CLIParam> {
     if (name_pred == "stdout") {
       save_period = 0;
     }
-    if (dsplit == 0 && collective::IsDistributed()) {
-      dsplit = 2;
-    }
   }
 };
 
@@ -200,24 +189,19 @@ class CLI {
 
   void CLITrain() {
     const double tstart_data_load = dmlc::GetTime();
-    if (collective::IsDistributed()) {
-      std::string pname = collective::GetProcessorName();
-      LOG(CONSOLE) << "start " << pname << ":" << collective::GetRank();
-    }
     // load in data.
     std::shared_ptr<DMatrix> dtrain(DMatrix::Load(
-        param_.train_path,
-        ConsoleLogger::GlobalVerbosity() > ConsoleLogger::DefaultVerbosity(),
-        param_.dsplit == 2));
+        param_.train_path, ConsoleLogger::GlobalVerbosity() > ConsoleLogger::DefaultVerbosity(),
+        static_cast<DataSplitMode>(param_.dsplit)));
     std::vector<std::shared_ptr<DMatrix>> deval;
     std::vector<std::shared_ptr<DMatrix>> cache_mats;
     std::vector<std::shared_ptr<DMatrix>> eval_datasets;
     cache_mats.push_back(dtrain);
     for (size_t i = 0; i < param_.eval_data_names.size(); ++i) {
-      deval.emplace_back(std::shared_ptr<DMatrix>(DMatrix::Load(
-          param_.eval_data_paths[i],
-          ConsoleLogger::GlobalVerbosity() > ConsoleLogger::DefaultVerbosity(),
-          param_.dsplit == 2)));
+      deval.emplace_back(std::shared_ptr<DMatrix>(
+          DMatrix::Load(param_.eval_data_paths[i],
+                        ConsoleLogger::GlobalVerbosity() > ConsoleLogger::DefaultVerbosity(),
+                        static_cast<DataSplitMode>(param_.dsplit))));
       eval_datasets.push_back(deval.back());
       cache_mats.push_back(deval.back());
     }
@@ -243,18 +227,12 @@ class CLI {
         version += 1;
       }
       std::string res = learner_->EvalOneIter(i, eval_datasets, eval_data_names);
-      if (collective::IsDistributed()) {
-        if (collective::GetRank() == 0) {
-          LOG(TRACKER) << res;
-        }
-      } else {
-        LOG(CONSOLE) << res;
-      }
-      if (param_.save_period != 0 && (i + 1) % param_.save_period == 0 &&
-          collective::GetRank() == 0) {
+      LOG(CONSOLE) << res;
+
+      if (param_.save_period != 0 && (i + 1) % param_.save_period == 0) {
         std::ostringstream os;
         os << param_.model_dir << '/' << std::setfill('0') << std::setw(4)
-           << i + 1 << ".model";
+           << i + 1 << ".ubj";
         this->SaveModel(os.str(), learner_.get());
       }
 
@@ -264,12 +242,11 @@ class CLI {
               << " sec";
     // always save final round
     if ((param_.save_period == 0 ||
-         param_.num_round % param_.save_period != 0) &&
-         collective::GetRank() == 0) {
+         param_.num_round % param_.save_period != 0)) {
       std::ostringstream os;
       if (param_.model_out == CLIParam::kNull) {
         os << param_.model_dir << '/' << std::setfill('0') << std::setw(4)
-           << param_.num_round << ".model";
+           << param_.num_round << ".ubj";
       } else {
         os << param_.model_out;
       }
@@ -324,7 +301,7 @@ class CLI {
     std::shared_ptr<DMatrix> dtest(DMatrix::Load(
         param_.test_path,
         ConsoleLogger::GlobalVerbosity() > ConsoleLogger::DefaultVerbosity(),
-        param_.dsplit == 2));
+        static_cast<DataSplitMode>(param_.dsplit)));
     // load model
     CHECK_NE(param_.model_in, CLIParam::kNull) << "Must specify model_in for predict";
     this->ResetLearner({});
@@ -352,29 +329,46 @@ class CLI {
   }
 
   void LoadModel(std::string const& path, Learner* learner) const {
-    if (common::FileExtension(path) == "json") {
+    auto ext = common::FileExtension(path);
+    auto read_file = [&]() {
       auto str = common::LoadSequentialFile(path);
-      CHECK_GT(str.size(), 2);
+      CHECK_GE(str.size(), 3);  // "{}\0"
       CHECK_EQ(str[0], '{');
-      Json in{Json::Load({str.c_str(), str.size()})};
+      return str;
+    };
+
+    if (ext == "json") {
+      auto buffer = read_file();
+      Json in{Json::Load(StringView{buffer.data(), buffer.size()})};
+      learner->LoadModel(in);
+    } else if (ext == "ubj") {
+      auto buffer = read_file();
+      Json in = Json::Load(StringView{buffer.data(), buffer.size()}, std::ios::binary);
       learner->LoadModel(in);
     } else {
-      std::unique_ptr<dmlc::Stream> fi(dmlc::Stream::Create(path.c_str(), "r"));
-      learner->LoadModel(fi.get());
+      LOG(FATAL) << "Unknown model format:" << path
+                 << ", expecting either UBJSON (`ubj`) or JSON (`json`).";
     }
   }
 
   void SaveModel(std::string const& path, Learner* learner) const {
     learner->Configure();
     std::unique_ptr<dmlc::Stream> fo(dmlc::Stream::Create(path.c_str(), "w"));
-    if (common::FileExtension(path) == "json") {
+    auto ext = common::FileExtension(path);
+    auto save_json = [&](std::ios::openmode mode) {
       Json out{Object()};
       learner->SaveModel(&out);
-      std::string str;
-      Json::Dump(out, &str);
-      fo->Write(str.c_str(), str.size());
+      std::vector<char> str;
+      Json::Dump(out, &str, mode);
+      fo->Write(str.data(), str.size());
+    };
+
+    if (ext == "json") {
+      save_json(std::ios::out);
+    } else if (ext == "ubj") {
+      save_json(std::ios::binary);
     } else {
-      learner->SaveModel(fo.get());
+      LOG(FATAL) << "Unknown model format:" << path << ", expecting either json or ubj.";
     }
   }
 
@@ -473,13 +467,6 @@ class CLI {
       }
     }
 
-    // Initialize the collective communicator.
-    Json json{JsonObject()};
-    for (auto& kv : cfg) {
-      json[kv.first] = String(kv.second);
-    }
-    collective::Init(json);
-
     param_.Configure(cfg);
   }
 
@@ -515,14 +502,12 @@ class CLI {
     }
     return 0;
   }
-
-  ~CLI() {
-    collective::Finalize();
-  }
 };
 }  // namespace xgboost
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
+  LOG(WARNING)
+      << "The command line interface is deprecated and will be removed in future releases.";
   try {
     xgboost::CLI cli(argc, argv);
     return cli.Run();

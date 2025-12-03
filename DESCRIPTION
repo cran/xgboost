@@ -1,8 +1,8 @@
 Package: xgboost
 Type: Package
 Title: Extreme Gradient Boosting
-Version: 1.7.11.1
-Date: 2025-05-01
+Version: 3.1.2.1
+Date: 2025-11-20
 Authors@R: c(
   person("Tianqi", "Chen", role = c("aut"),
          email = "tianqi.tchen@gmail.com"),
@@ -28,6 +28,7 @@ Authors@R: c(
   person("Yutian", "Li", role = c("aut")),
   person("Jiaming", "Yuan", role = c("aut", "cre"),
          email = "jm.yuan@outlook.com"),
+  person("David", "Cortes", role = c("aut")),
   person("XGBoost contributors", role = c("cph"),
          comment = "base XGBoost implementation")
   )
@@ -47,15 +48,16 @@ BugReports: https://github.com/dmlc/xgboost/issues
 NeedsCompilation: yes
 VignetteBuilder: knitr
 Suggests: knitr, rmarkdown, ggplot2 (>= 1.0.1), DiagrammeR (>= 0.9.0),
-        Ckmeans.1d.dp (>= 3.3.1), vcd (>= 1.3), cplm, e1071, caret,
-        testthat, lintr, igraph (>= 1.0.1), float, crayon, titanic
-Depends: R (>= 3.3.0)
+        DiagrammeRsvg, rsvg, htmlwidgets, Ckmeans.1d.dp (>= 3.3.1), vcd
+        (>= 1.3), testthat, igraph (>= 1.0.1), float, titanic,
+        RhpcBLASctl, survival
+Depends: R (>= 4.3.0)
 Imports: Matrix (>= 1.1-0), methods, data.table (>= 1.9.6), jsonlite
-        (>= 1.0),
-RoxygenNote: 7.3.2
+        (>= 1.0)
+RoxygenNote: 7.3.3
 Encoding: UTF-8
 SystemRequirements: GNU make, C++17
-Packaged: 2025-05-01 10:56:14 UTC; jiamingy
+Packaged: 2025-12-01 18:35:59 UTC; jiamingy
 Author: Tianqi Chen [aut],
   Tong He [aut],
   Michael Benesty [aut],
@@ -72,6 +74,7 @@ Author: Tianqi Chen [aut],
   Yifeng Geng [aut],
   Yutian Li [aut],
   Jiaming Yuan [aut, cre],
+  David Cortes [aut],
   XGBoost contributors [cph] (base XGBoost implementation)
 Repository: CRAN
-Date/Publication: 2025-05-15 07:10:02 UTC
+Date/Publication: 2025-12-03 10:00:02 UTC

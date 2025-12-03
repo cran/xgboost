@@ -1,5 +1,5 @@
-/*!
- * Copyright 2019-2022 by XGBoost Contributors
+/**
+ * Copyright 2019-2025, XGBoost Contributors
  */
 #ifndef XGBOOST_COMMON_THREADING_UTILS_H_
 #define XGBOOST_COMMON_THREADING_UTILS_H_
@@ -7,13 +7,19 @@
 #include <dmlc/common.h>
 #include <dmlc/omp.h>
 
-#include <algorithm>
-#include <cstdint>  // std::int32_t
-#include <limits>
-#include <type_traits>  // std::is_signed
-#include <vector>
+#include <algorithm>    // for min
+#include <cstddef>      // for size_t
+#include <cstdint>      // for int32_t
+#include <cstdlib>      // for malloc, free
+#include <new>          // for bad_alloc
+#include <thread>       // for thread
+#include <type_traits>  // for is_signed, conditional_t, is_integral_v, invoke_result_t
+#include <utility>      // for forward
+#include <vector>       // for vector
 
+#include "common.h"  // for DivRoundUp
 #include "xgboost/logging.h"
+#include "xgboost/string_view.h"  // for StringView
 
 #if !defined(_OPENMP)
 extern "C" {
@@ -23,35 +29,32 @@ inline int32_t omp_get_thread_limit() __GOMP_NOTHROW { return 1; }  // NOLINT
 
 // MSVC doesn't implement the thread limit.
 #if defined(_OPENMP) && defined(_MSC_VER)
+#include <limits>
+
 extern "C" {
 inline int32_t omp_get_thread_limit() { return std::numeric_limits<int32_t>::max(); }  // NOLINT
 }
 #endif  // defined(_MSC_VER)
 
-namespace xgboost {
-namespace common {
-
+namespace xgboost::common {
 // Represent simple range of indexes [begin, end)
 // Inspired by tbb::blocked_range
 class Range1d {
  public:
-  Range1d(size_t begin, size_t end): begin_(begin), end_(end) {
-    CHECK_LT(begin, end);
-  }
+  Range1d(std::size_t begin, std::size_t end) : begin_{begin}, end_{end} { CHECK_LT(begin, end); }
 
-  size_t begin() const {  // NOLINT
+  [[nodiscard]] std::size_t begin() const {  // NOLINT
     return begin_;
   }
-
-  size_t end() const {  // NOLINT
+  [[nodiscard]] std::size_t end() const {  // NOLINT
     return end_;
   }
+  [[nodiscard]] std::size_t Size() const { return this->end() - this->begin(); }
 
  private:
-  size_t begin_;
-  size_t end_;
+  std::size_t begin_;
+  std::size_t end_;
 };
-
 
 // Split 2d space to balanced blocks
 // Implementation of the class is inspired by tbb::blocked_range2d
@@ -67,7 +70,7 @@ class Range1d {
 // [1,2], [3,4], [5,6], [7,8], [9]
 // The class helps to process data in several tree nodes (non-balanced usually) in parallel
 // Using nested parallelism (by nodes and by data in each node)
-// it helps  to improve CPU resources utilization
+// it helps to improve CPU resources utilization
 class BlockedSpace2d {
  public:
   // Example of space:
@@ -84,63 +87,72 @@ class BlockedSpace2d {
   // dim1 - size of the first dimension in the space
   // getter_size_dim2 - functor to get the second dimensions for each 'row' by row-index
   // grain_size - max size of produced blocks
-  template<typename Func>
-  BlockedSpace2d(size_t dim1, Func getter_size_dim2, size_t grain_size) {
-    for (size_t i = 0; i < dim1; ++i) {
-      const size_t size = getter_size_dim2(i);
-      const size_t n_blocks = size/grain_size + !!(size % grain_size);
-      for (size_t iblock = 0; iblock < n_blocks; ++iblock) {
-        const size_t begin = iblock * grain_size;
-        const size_t end   = std::min(begin + grain_size, size);
+  template <typename Getter>
+  BlockedSpace2d(std::size_t dim1, Getter&& getter_size_dim2, std::size_t grain_size) {
+    static_assert(std::is_integral_v<std::invoke_result_t<Getter, std::size_t>>);
+    for (std::size_t i = 0; i < dim1; ++i) {
+      std::size_t size = getter_size_dim2(i);
+      // Each row (second dim) is divided into n_blocks
+      std::size_t n_blocks = size / grain_size + !!(size % grain_size);
+      for (std::size_t iblock = 0; iblock < n_blocks; ++iblock) {
+        std::size_t begin = iblock * grain_size;
+        std::size_t end = std::min(begin + grain_size, size);
         AddBlock(i, begin, end);
       }
     }
   }
 
   // Amount of blocks(tasks) in a space
-  size_t Size() const {
+  [[nodiscard]] std::size_t Size() const {
     return ranges_.size();
   }
 
   // get index of the first dimension of i-th block(task)
-  size_t GetFirstDimension(size_t i) const {
+  [[nodiscard]] std::size_t GetFirstDimension(std::size_t i) const {
     CHECK_LT(i, first_dimension_.size());
     return first_dimension_[i];
   }
 
   // get a range of indexes for the second dimension of i-th block(task)
-  Range1d GetRange(size_t i) const {
+  [[nodiscard]] Range1d GetRange(std::size_t i) const {
     CHECK_LT(i, ranges_.size());
     return ranges_[i];
   }
 
  private:
-  void AddBlock(size_t first_dimension, size_t begin, size_t end) {
-    first_dimension_.push_back(first_dimension);
+  /**
+   * @brief Add a parallel block.
+   *
+   * @param first_dim The row index.
+   * @param begin     The begin of the second dimension.
+   * @param end       The end of the second dimension.
+   */
+  void AddBlock(std::size_t first_dim, std::size_t begin, std::size_t end) {
+    first_dimension_.push_back(first_dim);
     ranges_.emplace_back(begin, end);
   }
 
   std::vector<Range1d> ranges_;
-  std::vector<size_t> first_dimension_;
+  std::vector<std::size_t> first_dimension_;
 };
 
 
 // Wrapper to implement nested parallelism with simple omp parallel for
 template <typename Func>
-void ParallelFor2d(const BlockedSpace2d& space, int nthreads, Func func) {
-  const size_t num_blocks_in_space = space.Size();
-  CHECK_GE(nthreads, 1);
+void ParallelFor2d(const BlockedSpace2d& space, std::int32_t n_threads, Func&& func) {
+  static_assert(std::is_void_v<std::invoke_result_t<Func, std::size_t, Range1d>>);
+  std::size_t n_blocks_in_space = space.Size();
+  CHECK_GE(n_threads, 1);
 
   dmlc::OMPException exc;
-#pragma omp parallel num_threads(nthreads)
+#pragma omp parallel num_threads(n_threads)
   {
     exc.Run([&]() {
-      size_t tid = omp_get_thread_num();
-      size_t chunck_size =
-          num_blocks_in_space / nthreads + !!(num_blocks_in_space % nthreads);
+      std::size_t tid = omp_get_thread_num();
+      std::size_t chunck_size = n_blocks_in_space / n_threads + !!(n_blocks_in_space % n_threads);
 
-      size_t begin = chunck_size * tid;
-      size_t end = std::min(begin + chunck_size, num_blocks_in_space);
+      std::size_t begin = chunck_size * tid;
+      std::size_t end = std::min(begin + chunck_size, n_blocks_in_space);
       for (auto i = begin; i < end; i++) {
         func(space.GetFirstDimension(i), space.GetRange(i));
       }
@@ -168,7 +180,15 @@ struct Sched {
 };
 
 template <typename Index, typename Func>
-void ParallelFor(Index size, int32_t n_threads, Sched sched, Func fn) {
+void ParallelFor(Index size, std::int32_t n_threads, Sched sched, Func&& fn) {
+  if (n_threads == 1) {
+    // early exit
+    for (Index i = 0; i < size; ++i) {
+      fn(i);
+    }
+    return;
+  }
+
 #if defined(_MSC_VER)
   // msvc doesn't support unsigned integer as openmp index.
   using OmpInd = std::conditional_t<std::is_signed<Index>::value, Index, omp_ulong>;
@@ -227,27 +247,49 @@ void ParallelFor(Index size, int32_t n_threads, Sched sched, Func fn) {
 }
 
 template <typename Index, typename Func>
-void ParallelFor(Index size, int32_t n_threads, Func fn) {
-  ParallelFor(size, n_threads, Sched::Static(), fn);
+void ParallelFor(Index size, std::int32_t n_threads, Func&& fn) {
+  ParallelFor(size, n_threads, Sched::Static(), std::forward<Func>(fn));
 }
 
-inline int32_t OmpGetThreadLimit() {
-  int32_t limit = omp_get_thread_limit();
+/**
+ * @brief 1-d block-based parallel for loop.
+ *
+ * @tparam kBlockOfRowsSize The size of the block.
+ * @tparam Index The type of the index.
+ * @tparam Func The type of the function.
+ *
+ * @param size The size of the range.
+ * @param n_threads The number of threads.
+ * @param fn The function to execute. The function should take a Range1d as an argument.
+ */
+template <std::size_t kBlockOfRowsSize, typename Index, typename Func>
+void ParallelFor1d(Index size, std::int32_t n_threads, Func&& fn) {
+  static_assert(std::is_void_v<std::invoke_result_t<Func, common::Range1d>>);
+  auto const n_blocks = DivRoundUp(size, kBlockOfRowsSize);
+  common::ParallelFor(n_blocks, n_threads, [&](auto block_id) {
+    std::size_t const block_beg = block_id * kBlockOfRowsSize;
+    auto const block_size = std::min(static_cast<std::size_t>(size - block_beg), kBlockOfRowsSize);
+    fn(common::Range1d{block_beg, block_beg + block_size});
+  });
+}
+
+inline std::int32_t OmpGetThreadLimit() {
+  std::int32_t limit = omp_get_thread_limit();
   CHECK_GE(limit, 1) << "Invalid thread limit for OpenMP.";
   return limit;
 }
 
-int32_t GetCfsCPUCount() noexcept;
+/**
+ * \brief Get thread limit from CFS.
+ *
+ *   This function has non-trivial overhead and should not be called repeatly.
+ */
+std::int32_t GetCfsCPUCount() noexcept;
 
-inline int32_t OmpGetNumThreads(int32_t n_threads) {
-  if (n_threads <= 0) {
-    n_threads = std::min(omp_get_num_procs(), omp_get_max_threads());
-  }
-  n_threads = std::min(n_threads, OmpGetThreadLimit());
-  n_threads = std::max(n_threads, 1);
-  return n_threads;
-}
-
+/**
+ * @brief Get the number of available threads based on n_threads specified by users.
+ */
+std::int32_t OmpGetNumThreads(std::int32_t n_threads) noexcept(true);
 
 /*!
  * \brief A C-style array with in-stack allocation. As long as the array is smaller than
@@ -261,7 +303,7 @@ class MemStackAllocator {
     if (MaxStackSize >= required_size_) {
       ptr_ = stack_mem_;
     } else {
-      ptr_ = reinterpret_cast<T*>(malloc(required_size_ * sizeof(T)));
+      ptr_ = reinterpret_cast<T*>(std::malloc(required_size_ * sizeof(T)));
     }
     if (!ptr_) {
       throw std::bad_alloc{};
@@ -273,7 +315,7 @@ class MemStackAllocator {
 
   ~MemStackAllocator() {
     if (required_size_ > MaxStackSize) {
-      free(ptr_);
+      std::free(ptr_);
     }
   }
   T& operator[](size_t i) { return ptr_[i]; }
@@ -293,10 +335,14 @@ class MemStackAllocator {
 };
 
 /**
- * \brief Constant that can be used for initializing static thread local memory.
+ * @brief Constant that can be used for initializing static thread local memory.
  */
 std::int32_t constexpr DefaultMaxThreads() { return 128; }
-}  // namespace common
-}  // namespace xgboost
+
+/**
+ * @brief Give the thread a name. Supports only pthread on linux.
+ */
+void NameThread(std::thread* t, StringView name);
+}  // namespace xgboost::common
 
 #endif  // XGBOOST_COMMON_THREADING_UTILS_H_
